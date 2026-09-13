@@ -56,7 +56,10 @@
   function smoothstep(a, b, x) { var t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
   function el(target, root) {
     if (!target) return null;
-    return typeof target === "string" ? (root || document).querySelector(target) : target;
+    if (typeof target !== "string") return target;
+    /* Prima dentro la sezione, poi in tutta la pagina: il fade puo' dover
+       spegnere qualcosa che sta fuori, per esempio la slide sotto. */
+    return (root && root.querySelector(target)) || document.querySelector(target);
   }
 
 const NOISE = `
@@ -425,13 +428,17 @@ void main(){
     "uniform float uSmokeLead;",
     "uniform float uQuant;",
     "uniform vec3 uBg;",
+    "uniform float uClear;",
     "void main(){",
     "  float arr = max(texture(uArrival, vUv).x",
     "            + (fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uQuant, 0.0);",
     "  float a = smoothstep(arr, arr + uFront, uProgress);",
     "  float hazeStart = max(arr - uSmokeLead, 0.0);",
     "  a = max(a, smoothstep(hazeStart, max(arr, hazeStart + uFront), uProgress) * uSmoke);",
-    "  fragColor = vec4(mix(uBg, vec3(1.0), a), 1.0);",
+    /* uClear 0: fondo opaco, la sezione e' autosufficiente.
+       uClear 1: solo inchiostro bianco premoltiplicato, alpha = copertura,
+       cosi' sotto si vede quello che c'e' davvero invece del nero. */
+    "  fragColor = mix(vec4(mix(uBg, vec3(1.0), a), 1.0), vec4(a, a, a, a), uClear);",
     "}"
   ].join("\n");
 
@@ -460,6 +467,9 @@ void main(){
     var lead = opts.lead != null ? opts.lead : 0.06;
     var tail = opts.tail != null ? opts.tail : 0.12;
     var bgRgb = hexToRgb(opts.background || BG);
+    /* transparent: il canvas non dipinge il proprio fondo. Serve quando la
+       sezione si sovrappone a qualcosa che deve restare visibile sotto. */
+    var clear = !!opts.transparent;
 
     /* ---- canvas ---- */
     var canvas = document.createElement("canvas");
@@ -468,7 +478,7 @@ void main(){
     cs.position = "absolute"; cs.inset = "0"; cs.top = "0"; cs.left = "0";
     cs.width = "100%"; cs.height = "100%"; cs.display = "block";
     cs.zIndex = "0"; cs.pointerEvents = "none";
-    cs.background = opts.background || BG;
+    cs.background = clear ? "transparent" : (opts.background || BG);
     if (getComputedStyle(stick).position === "static") stick.style.position = "relative";
     /* i figli esistenti devono stare sopra il canvas */
     for (var i = 0; i < stick.children.length; i++) {
@@ -483,7 +493,7 @@ void main(){
     if (!reduced) {
       try {
         gl = canvas.getContext("webgl2", {
-          alpha: false, depth: false, stencil: false, antialias: false,
+          alpha: clear, depth: false, stencil: false, antialias: false,
           preserveDrawingBuffer: false, powerPreference: "high-performance"
         });
       } catch (e) { gl = null; }
@@ -1108,6 +1118,7 @@ void main(){
       gl.uniform1f(u.uSmokeLead, SMOKE_LEAD);
       gl.uniform1f(u.uQuant, 1 / bakeSteps);
       gl.uniform3f(u.uBg, bgRgb[0], bgRgb[1], bgRgb[2]);
+      gl.uniform1f(u.uClear, clear ? 1 : 0);
       blit(null);
     }
 
@@ -1252,7 +1263,8 @@ void main(){
   /* Senza WebGL2 o con movimento ridotto: una spazzata morbida, guidata dallo
      stesso progresso. La sezione fa il suo mestiere, senza inchiostro. */
   function plain(canvas, pin, fadeEl, revealEl, lead, tail, opts, revealFrom, revealTo) {
-    var bg = opts.background || BG, ticking = false, lastFade = -1, lastReveal = -1;
+    var bg = opts.transparent ? "rgba(255,255,255,0)" : (opts.background || BG);
+    var ticking = false, lastFade = -1, lastReveal = -1;
     function paint() {
       ticking = false;
       var rect = pin.getBoundingClientRect();

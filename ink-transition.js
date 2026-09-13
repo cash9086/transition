@@ -446,6 +446,12 @@ void main(){
     if (!pin) return null;
     var stick = el(opts.stick, pin) || pin.firstElementChild || pin;
     var fadeEl = opts.fade ? el(opts.fade, pin) : null;
+    var revealEl = opts.reveal ? el(opts.reveal, pin) : null;
+    var revealFrom = opts.revealFrom != null ? opts.revealFrom : 0.9;
+    var revealTo = opts.revealTo != null ? opts.revealTo : 1;
+    /* Parte da JS e non da CSS: se lo script non gira, il titolo resta visibile
+       invece di sparire per sempre. */
+    if (revealEl) revealEl.style.opacity = "0";
     var prm = {};
     for (var k in PRESET) if (Object.prototype.hasOwnProperty.call(PRESET, k)) prm[k] = PRESET[k];
     if (opts.params) for (var k2 in opts.params) if (k2 in prm) prm[k2] = opts.params[k2];
@@ -486,7 +492,8 @@ void main(){
 
     /* Senza WebGL2, o con movimento ridotto richiesto: dissolvenza semplice.
        La sezione fa comunque il suo mestiere, solo senza inchiostro. */
-    if (!gl) return plain(canvas, pin, fadeEl, lead, tail, opts);
+    if (!gl) return plain(canvas, pin, fadeEl, revealEl, lead, tail, opts,
+                          revealFrom, revealTo);
 
     gl.disable(gl.BLEND);
     gl.disable(gl.DEPTH_TEST);
@@ -502,7 +509,8 @@ void main(){
       return sh;
     }
     var vertexShader = compile(gl.VERTEX_SHADER, VERT);
-    if (!vertexShader) return plain(canvas, pin, fadeEl, lead, tail, opts);
+    if (!vertexShader) return plain(canvas, pin, fadeEl, revealEl, lead, tail, opts,
+                                    revealFrom, revealTo);
 
     function Program(fs) {
       this.program = gl.createProgram();
@@ -1104,7 +1112,7 @@ void main(){
     }
 
     /* ---- lo scroll ---- */
-    var progress = 0, lastFade = -1, lastT = 0, rafId = 0, active = false;
+    var progress = 0, lastFade = -1, lastReveal = -1, lastT = 0, rafId = 0, active = false;
     var lastW = 0, lastH = 0;
 
     function applySize() {
@@ -1124,11 +1132,22 @@ void main(){
     }
 
     function applyFade(p) {
-      if (!fadeEl) return;
-      var v = 1 - smoothstep(0.06, 0.55, p);
-      if (Math.abs(v - lastFade) < 0.004) return;
-      lastFade = v;
-      fadeEl.style.opacity = v.toFixed(3);
+      if (fadeEl) {
+        var v = 1 - smoothstep(0.06, 0.55, p);
+        if (Math.abs(v - lastFade) >= 0.004) {
+          lastFade = v;
+          fadeEl.style.opacity = v.toFixed(3);
+        }
+      }
+      /* Il titolo affiora solo quando il bianco è pieno, ancora sotto la
+         sezione incollata: si vede prima di riprendere a scorrere. */
+      if (revealEl) {
+        var r = smoothstep(revealFrom, revealTo, p);
+        if (Math.abs(r - lastReveal) >= 0.004) {
+          lastReveal = r;
+          revealEl.style.opacity = r.toFixed(3);
+        }
+      }
     }
 
     function frame(now) {
@@ -1232,8 +1251,8 @@ void main(){
 
   /* Senza WebGL2 o con movimento ridotto: una spazzata morbida, guidata dallo
      stesso progresso. La sezione fa il suo mestiere, senza inchiostro. */
-  function plain(canvas, pin, fadeEl, lead, tail, opts) {
-    var bg = opts.background || BG, ticking = false, lastFade = -1;
+  function plain(canvas, pin, fadeEl, revealEl, lead, tail, opts, revealFrom, revealTo) {
+    var bg = opts.background || BG, ticking = false, lastFade = -1, lastReveal = -1;
     function paint() {
       ticking = false;
       var rect = pin.getBoundingClientRect();
@@ -1247,6 +1266,10 @@ void main(){
       if (fadeEl) {
         var v = 1 - smoothstep(0.06, 0.55, p);
         if (Math.abs(v - lastFade) >= 0.004) { lastFade = v; fadeEl.style.opacity = v.toFixed(3); }
+      }
+      if (revealEl) {
+        var r = smoothstep(revealFrom, revealTo, p);
+        if (Math.abs(r - lastReveal) >= 0.004) { lastReveal = r; revealEl.style.opacity = r.toFixed(3); }
       }
     }
     function onScroll() {

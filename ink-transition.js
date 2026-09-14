@@ -1085,6 +1085,10 @@ void main(){
     }
 
     var baked = false, baking = false, bakeStep = 0;
+    /* Chi ha chiesto il calcolo: l'osservatore di visibilita' (inVista), oppure
+       prepare(), che lo fa partire a sezione lontana — per esempio sotto un
+       preloader. Finche' forzato e' acceso l'osservatore non puo' spegnerlo. */
+    var inVista = false, forzato = false;
 
     function startBake() {
       resetSim();
@@ -1103,6 +1107,9 @@ void main(){
         if (++bakeStep >= bakeSteps) {
           baking = false; baked = true;
           resetSim();
+          /* Cotto a sezione lontana: si rilascia subito. Senza questo, da qui
+             in poi si ridisegnerebbe a ogni fotogramma per tutta la pagina. */
+          if (forzato) { forzato = false; if (!inVista) stop(); }
           if (opts.onReady) opts.onReady();
         }
       }
@@ -1209,7 +1216,8 @@ void main(){
     }
 
     var io = new IntersectionObserver(function (entries) {
-      if (entries[0].isIntersecting) start(); else stop();
+      inVista = entries[0].isIntersecting;
+      if (inVista || forzato) start(); else stop();
     }, { rootMargin: (opts.preload || "120%") + " 0px" });
     io.observe(pin);
 
@@ -1245,6 +1253,16 @@ void main(){
         return progress;
       },
       rebake: function () { baked = false; if (active) startBake(); },
+      /* Fa partire il calcolo adesso, anche se la sezione e' lontanissima:
+         serve a un preloader che vuole pagarlo mentre l'utente aspetta gia'.
+         A calcolo finito, se la sezione non e' in vista, si rispegne da sola.
+         Torna false se non c'era niente da fare (gia' cotto, o gia' in corso). */
+      prepare: function () {
+        if (baked || baking) return false;
+        forzato = true;
+        start();
+        return true;
+      },
       destroy: function () {
         stop();
         io.disconnect();
@@ -1296,6 +1314,7 @@ void main(){
     return {
       element: canvas,
       ready: true,
+      prepare: function () { return false; },
       rebake: function () {},
       destroy: function () {
         global.removeEventListener("scroll", onScroll);

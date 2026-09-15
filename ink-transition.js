@@ -503,7 +503,12 @@ void main(){
     /* Il bordo della lettera e' la lettera, non il punto in cui il rumore del
        fronte ha smesso di mordere: il giro intorno allo scoglio e' gia'
        avvenuto nella simulazione, qui si decide solo dove tagliare. */
-    "    float solido = smoothstep(0.35, 0.65, m.x);",
+    /* La copertura della lettera si usa com'e', senza soglia. Una soglia
+       decide "dentro o fuori" e butta via la sfumatura del bordo: su uno
+       stelo grosso non si nota, su un'asta sottile si mangia meta' asta e
+       la lettera esce magra. Cosi' invece il bordo e' identico a quello
+       che disegnerebbe il browser. */
+    "    float solido = m.x;",
     /* L'assorbimento, rifatto con l'inchiostro invece che sul testo. Appena
        l'inchiostro arriva la riserva e' larga quanto la forma sfocata: si
        vede una macchia gonfia dal bordo morbido. Poi la soglia sale, il
@@ -849,38 +854,46 @@ void main(){
        2D grande quanto la griglia dell'inchiostro e ci dipinge di bianco
        cio' che e' solido: il motore non ha idea che siano lettere, e non
        deve averla. */
-    var maskTex = null, hasMask = 0;
+    /* DUE disegni della stessa cosa, a due risoluzioni diverse, perche'
+       servono a due cose diverse.
 
-    function buildMask() {
-      hasMask = 0;
-      if (typeof opts.obstacle !== "function" || !dye) return;
-      var w = dye.read.width, h = dye.read.height;
+       La simulazione lavora sulla griglia dell'inchiostro — qualche
+       centinaio di celle — e le basta sapere grosso modo dove sta la
+       lettera: se il bordo li' e' morbido non se ne accorge nessuno.
+
+       Il BORDO della lettera, invece, e' tipografia, e va risolto dove lo
+       si guarda: sui pixel veri dello schermo. Disegnarlo nella griglia
+       dell'inchiostro voleva dire dare a un'asta del Glamor Light un pixel
+       e mezzo di spazio — e un'asta che ha un pixel e mezzo di spazio esce
+       piu' magra di com'e'. Da qui in poi la seconda maschera, quella
+       grande, e' l'unica che il disegno guarda. */
+    var maskTex = null, maskHiTex = null, hasMask = 0;
+
+    function pittura(w, h, sfocatura) {
       var cv = document.createElement("canvas");
       cv.width = w; cv.height = h;
       var ctx = cv.getContext("2d");
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
-      /* Due forme nello stesso disegno, una per canale, sommate invece che
-         sovrapposte: la seconda non deve cancellare la prima.
-           VERDE  la stessa lettera sfocata — la macchia bagnata, cioe' fin
-                  dove l'inchiostro si ferma nel primo istante.
-           ROSSO  la lettera esatta — quella che resta quando e' asciutta.
-         La simulazione guarda solo il rosso: gira intorno alla lettera vera.
-         Il verde serve al momento di disegnare, per far ritirare la macchia
-         fino al rosso. */
+      /* Due forme sommate invece che sovrapposte, una per canale: la
+         seconda non deve cancellare la prima.
+           VERDE  la stessa lettera sfocata — la macchia bagnata.
+           ROSSO  la lettera esatta — quella che resta quando e' asciutta. */
       ctx.globalCompositeOperation = "lighter";
-      try {
-        if (prm.wet > 0) {
-          ctx.filter = "blur(" + prm.wet + "px)";
-          ctx.fillStyle = "#00ff00";
-          opts.obstacle(ctx, w, h);
-          ctx.filter = "none";
-        }
-        ctx.fillStyle = "#ff0000";
+      if (sfocatura > 0) {
+        ctx.filter = "blur(" + sfocatura + "px)";
+        ctx.fillStyle = "#00ff00";
         opts.obstacle(ctx, w, h);
-      } catch (e) { return; }
-      if (!maskTex) maskTex = gl.createTexture();
+        ctx.filter = "none";
+      }
+      ctx.fillStyle = "#ff0000";
+      opts.obstacle(ctx, w, h);
+      return cv;
+    }
+
+    function carica(tex, cv) {
+      if (!tex) tex = gl.createTexture();
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, maskTex);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
       /* Il canvas 2D conta le righe dall'alto, la texture dal basso. */
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
@@ -889,10 +902,32 @@ void main(){
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return tex;
+    }
+
+    function buildMask() {
+      hasMask = 0;
+      if (typeof opts.obstacle !== "function" || !dye) return;
+      var sw = dye.read.width, sh = dye.read.height;
+      var hw = Math.min(gl.drawingBufferWidth, opts.maskMax || 2600);
+      var hh = Math.max(1, Math.round(hw * gl.drawingBufferHeight / Math.max(1, gl.drawingBufferWidth)));
+      try {
+        maskTex   = carica(maskTex,   pittura(sw, sh, prm.wet));
+        /* La sfocatura e' una misura sulla carta, non in celle: cresce con
+           la risoluzione, se no la macchia bagnata sarebbe grande la meta'. */
+        maskHiTex = carica(maskHiTex, pittura(hw, hh, prm.wet * (hw / sw)));
+      } catch (e) { return; }
       hasMask = 1;
     }
 
+    function attachMaskHi(unit) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, maskHiTex);
+      return unit;
+    }
+
     function attachMask(unit) {
+
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, maskTex);
       return unit;
@@ -1376,7 +1411,7 @@ void main(){
     function render(p) {
       var u = P_DISPLAY.bind();
       gl.uniform1i(u.uArrival, arrival.read.attach(0));
-      gl.uniform1i(u.uMask, hasMask ? attachMask(1) : arrival.read.attach(0));
+      gl.uniform1i(u.uMask, hasMask ? attachMaskHi(1) : arrival.read.attach(0));
       gl.uniform1f(u.uHasMask, hasMask);
       gl.uniform1f(u.uRim, prm.rim);
       gl.uniform2f(u.uATexel, arrival.texelX, arrival.texelY);
@@ -1557,6 +1592,8 @@ void main(){
           if (t && t.dispose) t.dispose();
         });
         sondaDati = null;
+        if (maskTex) gl.deleteTexture(maskTex);
+        if (maskHiTex) gl.deleteTexture(maskHiTex);
         var lose = gl.getExtension("WEBGL_lose_context");
         if (lose) lose.loseContext();
         if (canvas.parentNode) canvas.parentNode.removeChild(canvas);

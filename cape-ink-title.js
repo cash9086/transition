@@ -239,11 +239,22 @@
     if (titolo) vesti(conInchiostro);
 
     /* Lo scoglio ha la forma del carattere: aspettarlo non e' un vezzo, con
-       il ripiego la lettera avrebbe un'altra larghezza. Ma non si aspetta
-       all'infinito. */
-    if (conInchiostro && document.fonts && document.fonts.ready) {
-      var t = setTimeout(function () { monta(true); }, I.attesaFont);
-      document.fonts.ready.then(function () { clearTimeout(t); monta(true); });
+       il ripiego la lettera avrebbe un'altra larghezza e un altro spessore.
+       Non basta document.fonts.ready: quello promette solo che non ci sono
+       caricamenti IN CORSO, e un font che nessuno ha ancora chiesto non e'
+       un caricamento in corso. Si chiede esattamente la combinazione che
+       servira' al canvas. Ma non si aspetta all'infinito. */
+    if (conInchiostro && titolo && document.fonts && document.fonts.load) {
+      var fatto = false;
+      var poi = function () { if (fatto) return; fatto = true; monta(true); };
+      var t = setTimeout(poi, I.attesaFont);
+      var st = global.getComputedStyle(titolo);
+      var spec = st.fontStyle + " " + st.fontWeight + " " + st.fontSize + " " + st.fontFamily;
+      var attese = [];
+      try { attese.push(document.fonts.load(spec, "AHMO")); } catch (e) {}
+      if (document.fonts.ready) attese.push(document.fonts.ready);
+      Promise.all(attese).then(function () { clearTimeout(t); poi(); },
+                               function () { clearTimeout(t); poi(); });
     } else {
       monta(conInchiostro);
     }

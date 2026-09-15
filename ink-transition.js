@@ -9,6 +9,13 @@
  * Uso:
  *   InkTransition.mount({ pin: '.ink-pin', stick: '.ink-stick' });
  *
+ * La mappa di arrivo e' anche leggibile dalla pagina: arrivalAt(u, v) dice a
+ * che progresso l'inchiostro raggiunge un punto dello schermo, e onProgress(p)
+ * riporta l'avanzamento a ogni fotogramma. Insieme servono ad agganciare
+ * qualcosa in pagina all'inchiostro vero — per esempio far asciugare ogni
+ * lettera di un titolo nell'istante in cui l'inchiostro le passa sopra —
+ * invece che a una linea del tempo inventata che gli somiglia.
+ *
  * Struttura attesa nel documento:
  *   .ink-pin      alto qualche schermata, position: relative
  *     .ink-stick  position: sticky; top: 0; height: 100vh; overflow: hidden
@@ -442,6 +449,19 @@ void main(){
     "}"
   ].join("\n");
 
+  /* La mappa di arrivo ridotta a 8 bit, per poterla leggere dalla CPU.
+     readPixels su un bersaglio a virgola mobile non e' garantito su tutte le
+     schede; su RGBA8 lo e'. R = progresso di arrivo, G = "mai raggiunto".
+     Un ottavo di percento di precisione: per far partire una lettera e'
+     mille volte piu' di quanto serva. */
+  var FS_PROBE = HEAD + [
+    "uniform sampler2D uArrival;",
+    "void main(){",
+    "  float a = texture(uArrival, vUv).x;",
+    "  fragColor = vec4(clamp(a, 0.0, 1.0), a > 1.5 ? 1.0 : 0.0, 0.0, 1.0);",
+    "}"
+  ].join("\n");
+
   function hexToRgb(hex) {
     var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
     if (!m) return [0.0784314, 0.0784314, 0.0862745];
@@ -547,6 +567,7 @@ void main(){
     var P_CLEAR = new Program(FS_CLEAR), P_PRESSURE = new Program(FS_PRESSURE);
     var P_GRADIENT = new Program(FS_GRADIENT), P_BRUSH = new Program(FS_BRUSH);
     var P_ARRIVAL = new Program(FS_ARRIVAL), P_DISPLAY = new Program(FS_DISPLAY);
+    var P_PROBE = new Program(FS_PROBE);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, -1, 1, 1, 1, 1, -1]), gl.STATIC_DRAW);
@@ -643,6 +664,7 @@ void main(){
     }
 
     function initFramebuffers() {
+      sondaDati = null;
       var q = quality();
       bakeSteps = q.steps;
       var HALF = gl.HALF_FLOAT, L = gl.LINEAR;
@@ -659,6 +681,48 @@ void main(){
       dyeTmp2 = createFBO(ink.w, ink.h, gl.R16F, gl.RED, HALF, L);
       arrival = createDouble(ink.w, ink.h, gl.R16F, gl.RED, HALF, gl.NEAREST);
       clearArrival();
+    }
+
+    /* ---- la mappa di arrivo, leggibile dalla pagina ----
+       Una copia piccola e a 8 bit, presa una volta sola a calcolo finito e
+       tenuta finche' non si ricalcola. Una lettura da GPU costa un blocco
+       della pipeline: farla per ogni lettera, o peggio per ogni fotogramma,
+       sarebbe stato il modo sbagliato di avere la stessa informazione. */
+    var sondaFbo = null, sondaDati = null, sondaW = 0, sondaH = 0;
+
+    function leggiSonda() {
+      if (sondaDati || !baked) return sondaDati;
+      var w = 256;
+      var h = clamp(Math.round(256 * gl.drawingBufferHeight / Math.max(1, gl.drawingBufferWidth)), 48, 256);
+      if (!sondaFbo || sondaW !== w || sondaH !== h) {
+        if (sondaFbo) sondaFbo.dispose();
+        sondaFbo = createFBO(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST);
+        sondaW = w; sondaH = h;
+      }
+      var u = P_PROBE.bind();
+      gl.uniform1i(u.uArrival, arrival.read.attach(0));
+      blit(sondaFbo);
+      var px = new Uint8Array(w * h * 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sondaFbo.fbo);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      sondaDati = px;
+      return px;
+    }
+
+    /* u e v in 0..1, v contata dall'alto come nel DOM. Torna il progresso a
+       cui l'inchiostro raggiunge quel punto, oppure null se il calcolo non e'
+       ancora finito — chi chiama deve avere un ripiego per quel caso. Un
+       punto che l'inchiostro non tocca mai torna 1, non null: "alla fine",
+       che e' una risposta con cui si puo' animare, invece di un buco. */
+    function arrivalAt(u, v) {
+      var px = leggiSonda();
+      if (!px) return null;
+      var x = clamp(Math.round(u * (sondaW - 1)), 0, sondaW - 1);
+      /* readPixels conta le righe dal basso, il DOM dall'alto. */
+      var y = clamp(Math.round((1 - v) * (sondaH - 1)), 0, sondaH - 1);
+      var i = (y * sondaW + x) * 4;
+      return px[i + 1] > 127 ? 1 : px[i] / 255;
     }
 
     function clearTarget(t) {
@@ -1094,6 +1158,7 @@ void main(){
       resetSim();
       clearArrival();
       baking = true; baked = false; bakeStep = 0;
+      sondaDati = null;
       simProgress = 0; simPrev = 0;
       if (opts.onBakeStart) opts.onBakeStart();
     }
@@ -1166,6 +1231,10 @@ void main(){
           revealEl.style.opacity = r.toFixed(3);
         }
       }
+      /* Non smorzato e non filtrato: e' lo stesso numero con cui il display
+         legge la mappa, quindi chi si aggancia qui e' sullo stesso
+         fotogramma dell'inchiostro, non un fotogramma dopo. */
+      if (opts.onProgress) opts.onProgress(p);
     }
 
     function frame(now) {
@@ -1244,6 +1313,8 @@ void main(){
       element: canvas,
       get progress() { return progress; },
       get ready() { return baked; },
+      /* Dove passa l'inchiostro, e quando. Vedi arrivalAt qui sopra. */
+      arrivalAt: arrivalAt,
       /* Porta il progresso a un valore e disegna subito, senza smorzamento.
          Serve per pilotare la sezione da un altro motore di scroll (GSAP,
          Lenis) passando driver: "manual" al mount. */
@@ -1268,9 +1339,10 @@ void main(){
         io.disconnect();
         global.removeEventListener("resize", onResize);
         clearTimeout(resizeT);
-        [velocity, pressure, divergence, curl, dye, dyeTmp1, dyeTmp2, arrival].forEach(function (t) {
+        [velocity, pressure, divergence, curl, dye, dyeTmp1, dyeTmp2, arrival, sondaFbo].forEach(function (t) {
           if (t && t.dispose) t.dispose();
         });
+        sondaDati = null;
         var lose = gl.getExtension("WEBGL_lose_context");
         if (lose) lose.loseContext();
         if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
@@ -1301,6 +1373,7 @@ void main(){
         var r = smoothstep(revealFrom, revealTo, p);
         if (Math.abs(r - lastReveal) >= 0.004) { lastReveal = r; revealEl.style.opacity = r.toFixed(3); }
       }
+      if (opts.onProgress) opts.onProgress(p);
     }
     function onScroll() {
       if (ticking) return;
@@ -1314,6 +1387,9 @@ void main(){
     return {
       element: canvas,
       ready: true,
+      /* Qui la mappa non esiste: non c'e' stata nessuna simulazione. Torna
+         null, che e' il caso che chi chiama deve gia' saper gestire. */
+      arrivalAt: function () { return null; },
       prepare: function () { return false; },
       rebake: function () {},
       destroy: function () {

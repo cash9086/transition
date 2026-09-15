@@ -99,7 +99,17 @@
      una misura, e a noi per rileggerle da li' e ridisegnarlo dentro
      l'inchiostro. Una sola fonte, quindi, e resta sovrascrivibile dal
      custom code della pagina se un domani serve. */
-  function vesti(nascondi) {
+  /* Il testo vero sparisce dagli occhi solo adesso, e solo perche' al suo
+     posto c'e' il disegno. Resta nel documento, quindi uno screen reader e
+     Google continuano a leggerlo. */
+  function nascondi() {
+    var css = document.getElementById("cape-ink-title-css");
+    if (css && css.textContent.indexOf(".ink-title{opacity:0}") < 0) {
+      css.textContent += "\n.ink-title{opacity:0}";
+    }
+  }
+
+  function vesti(nascondere) {
     if (document.getElementById("cape-ink-title-css")) return;
     var s = document.createElement("style");
     s.id = "cape-ink-title-css";
@@ -121,7 +131,7 @@
          perche' e' da li' che si legge come va disegnato, e resta leggibile
          da uno screen reader e da Google. Se questo file non gira, questa
          riga non viene mai scritta e il titolo si vede normalmente. */
-      (nascondi ? ".ink-title{opacity:0}\n" : "");
+      (nascondere ? ".ink-title{opacity:0}\n" : "");
     document.head.appendChild(s);
   }
 
@@ -191,6 +201,7 @@
       pin: I.pin,
       stick: I.stick,
       transparent: true,
+      letterColor: I.colore,
       bakeBudgetMs: 4,
       params: {
         inkTime: I.inkTime,
@@ -203,7 +214,10 @@
       onBakeProgress: function (p) {
         document.documentElement.style.setProperty("--ink-avanzamento", (p * 100).toFixed(1) + "%");
       },
-      onReady: annuncia
+      onReady: function () {
+        if (conInchiostro && sezione && sezione.hasObstacle && sezione.hasObstacle()) nascondi();
+        annuncia();
+      }
     };
 
     if (conInchiostro) opzioni.obstacle = scoglio;
@@ -214,13 +228,6 @@
     sezione = InkTransition.mount(opzioni);
     global.inkSection = sezione;
 
-    /* Ultima rete: haInchiostro() copre i casi noti, ma se il modulo ripiega
-       lo stesso — uno shader che non compila su una scheda strana — il titolo
-       resterebbe nascosto senza che nessuno lo disegni. Qui lo si riaccende. */
-    if (conInchiostro && sezione && typeof sezione.redrawObstacle !== "function") {
-      var css = document.getElementById("cape-ink-title-css");
-      if (css) css.textContent = css.textContent.replace(".ink-title{opacity:0}", "");
-    }
 
     var anticipa = sezione && global.innerWidth >= I.preparaDa && sezione.prepare();
     if (!anticipa) annuncia();
@@ -236,7 +243,12 @@
 
     titolo = document.querySelector(I.titolo);
     var conInchiostro = haInchiostro();
-    if (titolo) vesti(conInchiostro);
+    /* Il vestito si mette subito, il nascondere no: quello si decide a
+       calcolo finito, quando si sa che lo scoglio e' stato davvero
+       disegnato. Nascondere un titolo che poi nessuno disegna vuol dire
+       perderlo, ed e' esattamente il tipo di guasto che non si nota in
+       prova e si nota in pagina. */
+    if (titolo) vesti(false);
 
     /* Lo scoglio ha la forma del carattere: aspettarlo non e' un vezzo, con
        il ripiego la lettera avrebbe un'altra larghezza e un altro spessore.

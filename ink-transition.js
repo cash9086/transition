@@ -462,6 +462,7 @@ void main(){
     "uniform float uSmokeLead;",
     "uniform float uQuant;",
     "uniform vec3 uBg;",
+    "uniform vec3 uInk;",
     "uniform float uClear;",
     "void main(){",
     "  vec2 m = uHasMask > 0.5 ? texture(uMask, vUv).xy : vec2(0.0);",
@@ -494,6 +495,7 @@ void main(){
     "  float a = smoothstep(arr, arr + uFront, uProgress);",
     "  float hazeStart = max(arr - uSmokeLead, 0.0);",
     "  a = max(a, smoothstep(hazeStart, max(arr, hazeStart + uFront), uProgress) * uSmoke);",
+    "  float aLet = 0.0;",
     "  if (uHasMask > 0.5) {",
     /* L'orlo: accanto alla lettera l'inchiostro risulta arrivato un filo
        prima. E' una lettura della mappa, non una modifica del campo, quindi
@@ -519,12 +521,26 @@ void main(){
     "      float soglia = mix(0.045, 1.05, q);",
     "      solido = max(solido, smoothstep(soglia, soglia + mix(0.20, 0.03, q), m.y));",
     "    }",
+    /* La copertura dell'inchiostro QUI, prima del ritaglio: e' il momento in
+       cui il bianco arriva su questo punto, ed e' anche il momento in cui la
+       lettera deve farsi vedere. */
+    "    float aPieno = a;",
     "    a *= 1.0 - solido;",
+    "    aLet = solido * aPieno;",
     "  }",
-    /* uClear 0: fondo opaco, la sezione e' autosufficiente.
-       uClear 1: solo inchiostro bianco premoltiplicato, alpha = copertura,
-       cosi' sotto si vede quello che c'e' davvero invece del nero. */
-    "  fragColor = mix(vec4(mix(uBg, vec3(1.0), a), 1.0), vec4(a, a, a, a), uClear);",
+    /* La lettera viene DIPINTA, non lasciata vuota. Lasciarla vuota vuol dire
+       mostrare quello che sta dietro al canvas, e quello che sta dietro non e'
+       una garanzia: basta che li' sotto ci sia del bianco invece della slide
+       scura e la lettera diventa bianca su bianco, cioe' sparisce. Il colore
+       adesso e' un parametro, e la lettera compare con la stessa copertura
+       dell'inchiostro che le arriva intorno.
+
+       uClear 0: fondo opaco, la sezione e' autosufficiente.
+       uClear 1: premoltiplicato, alpha = copertura, cosi' sotto si vede
+       quello che c'e' davvero dove non c'e' ne' inchiostro ne' lettera. */
+    "  vec3 rgb = vec3(1.0) * a + uInk * aLet;",
+    "  float al = min(a + aLet, 1.0);",
+    "  fragColor = mix(vec4(uBg * (1.0 - al) + rgb, 1.0), vec4(rgb, al), uClear);",
     "}"
   ].join("\n");
 
@@ -608,6 +624,10 @@ void main(){
     var lead = opts.lead != null ? opts.lead : 0.06;
     var tail = opts.tail != null ? opts.tail : 0.12;
     var bgRgb = hexToRgb(opts.background || BG);
+    /* Il colore delle lettere. Di suo e' il fondo della sezione — cosi' la
+       lettera legge come il buco lasciato dal bianco — ma e' un colore vero,
+       dipinto, non un buco. */
+    var inkRgb = hexToRgb(opts.letterColor || opts.background || BG);
     /* transparent: il canvas non dipinge il proprio fondo. Serve quando la
        sezione si sovrappone a qualcosa che deve restare visibile sotto. */
     var clear = !!opts.transparent;
@@ -1425,6 +1445,7 @@ void main(){
       gl.uniform1f(u.uSmokeLead, SMOKE_LEAD);
       gl.uniform1f(u.uQuant, 1 / bakeSteps);
       gl.uniform3f(u.uBg, bgRgb[0], bgRgb[1], bgRgb[2]);
+      gl.uniform3f(u.uInk, inkRgb[0], inkRgb[1], inkRgb[2]);
       gl.uniform1f(u.uClear, clear ? 1 : 0);
       blit(null);
     }
@@ -1550,6 +1571,10 @@ void main(){
       get ready() { return baked; },
       /* Dove passa l'inchiostro, e quando. Vedi arrivalAt qui sopra. */
       arrivalAt: arrivalAt,
+      /* Vero solo se lo scoglio e' stato disegnato davvero. Chi nasconde il
+         testo vero della pagina deve poterlo chiedere: nascondere un titolo
+         che poi nessuno disegna vuol dire perderlo. */
+      hasObstacle: function () { return !!hasMask; },
       /* Porta il progresso a un valore e disegna subito, senza smorzamento.
          Serve per pilotare la sezione da un altro motore di scroll (GSAP,
          Lenis) passando driver: "manual" al mount. */

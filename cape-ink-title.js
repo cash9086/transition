@@ -70,6 +70,7 @@
   };
 
   var titolo = null, sezione = null, partito = false;
+  var pin = null, copriva = false;
   var pronto = false, salvagente = 0;
 
   /* ——— il preloader: invariato ————————————————————————————————— */
@@ -127,6 +128,13 @@
          misura fissa. */
       "@media (max-width:1200px){.ink-title{font-size:min(" + I.corpo + ",12.5vw)}}\n" +
       "@media (max-width:600px){.ink-title{font-size:11vw;line-height:1}}\n" +
+      /* Mentre l'inchiostro copre lo schermo, il mouse e' suo. Senza questa
+         riga gli eventi passano attraverso e arrivano alla sezione di sotto,
+         che e' li' ma non si vede: si finisce a illuminare lo stato di una
+         foto che l'utente non sta guardando. Si accende solo a inchiostro
+         avviato — prima la sezione e' trasparente e sotto c'e' roba vera con
+         cui ha senso poter interagire. */
+      ".ink-pin.ink-copre .ink-stick{pointer-events:auto}\n" +
       /* Invisibile, non rimosso: resta nel documento con la sua misura,
          perche' e' da li' che si legge come va disegnato, e resta leggibile
          da uno screen reader e da Google. Se questo file non gira, questa
@@ -211,6 +219,11 @@
         clean:   I.pulizia,
         wet:     I.bagnato
       },
+      onProgress: function (p) {
+        if (!pin) return;
+        var copre = p > 0.015;
+        if (copre !== copriva) { copriva = copre; pin.classList.toggle("ink-copre", copre); }
+      },
       onBakeProgress: function (p) {
         document.documentElement.style.setProperty("--ink-avanzamento", (p * 100).toFixed(1) + "%");
       },
@@ -239,7 +252,8 @@
        non deve restare su per sempre */
     salvagente = setTimeout(annuncia, I.salvagenteMs);
 
-    if (!global.InkTransition || !document.querySelector(I.pin)) { annuncia(); return; }
+    pin = document.querySelector(I.pin);
+    if (!global.InkTransition || !pin) { annuncia(); return; }
 
     titolo = document.querySelector(I.titolo);
     var conInchiostro = haInchiostro();

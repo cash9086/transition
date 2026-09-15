@@ -593,9 +593,15 @@ void main(){
      mille volte piu' di quanto serva. */
   var FS_PROBE = HEAD + [
     "uniform sampler2D uArrival;",
+    "uniform sampler2D uMask;",
+    "uniform float uHasMask;",
     "void main(){",
     "  float a = texture(uArrival, vUv).x;",
-    "  fragColor = vec4(clamp(a, 0.0, 1.0), a > 1.5 ? 1.0 : 0.0, 0.0, 1.0);",
+    /* Nel blu ci sta la lettera: la stessa lettura serve a sapere se un
+       punto e' gia' inchiostro E se e' una lettera, senza una seconda
+       lettura da GPU. */
+    "  float L = uHasMask > 0.5 ? texture(uMask, vUv).x : 0.0;",
+    "  fragColor = vec4(clamp(a, 0.0, 1.0), a > 1.5 ? 1.0 : 0.0, L, 1.0);",
     "}"
   ].join("\n");
 
@@ -836,8 +842,8 @@ void main(){
 
     function leggiSonda() {
       if (sondaDati || !baked) return sondaDati;
-      var w = 256;
-      var h = clamp(Math.round(256 * gl.drawingBufferHeight / Math.max(1, gl.drawingBufferWidth)), 48, 256);
+      var w = 384;
+      var h = clamp(Math.round(384 * gl.drawingBufferHeight / Math.max(1, gl.drawingBufferWidth)), 48, 256);
       if (!sondaFbo || sondaW !== w || sondaH !== h) {
         if (sondaFbo) sondaFbo.dispose();
         sondaFbo = createFBO(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.NEAREST);
@@ -845,6 +851,8 @@ void main(){
       }
       var u = P_PROBE.bind();
       gl.uniform1i(u.uArrival, arrival.read.attach(0));
+      gl.uniform1i(u.uMask, hasMask ? attachMask(1) : arrival.read.attach(0));
+      gl.uniform1f(u.uHasMask, hasMask);
       blit(sondaFbo);
       var px = new Uint8Array(w * h * 4);
       gl.bindFramebuffer(gl.FRAMEBUFFER, sondaFbo.fbo);
@@ -959,6 +967,30 @@ void main(){
       gl.uniform1i(u.uField, campo.read.attach(0));
       gl.uniform1i(u.uMask, attachMask(1));
       blit(campo.write); campo.swap();
+    }
+
+    /* Chiaro o scuro in un punto dello schermo, secondo l'inchiostro. Serve
+       a chi disegna qualcosa SOPRA questa sezione — un cursore su misura,
+       per dirne una — e non puo' chiederlo al DOM: quello che si vede qui
+       non e' un elemento, e' una simulazione.
+         true   qui c'e' il bianco dell'inchiostro
+         false  qui c'e' una lettera, oppure l'inchiostro non e' ancora
+                arrivato e sotto si vede la sezione scura
+         null   il punto non e' in questa sezione, o il calcolo non e' pronto
+       Coordinate in pixel di finestra, come quelle di un evento del mouse. */
+    function inkLightAt(x, y) {
+      var px = leggiSonda();
+      if (!px) return null;
+      var r = canvas.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return null;
+      if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null;
+      var u = (x - r.left) / r.width, v = (y - r.top) / r.height;
+      var cx = clamp(Math.round(u * (sondaW - 1)), 0, sondaW - 1);
+      var cy = clamp(Math.round((1 - v) * (sondaH - 1)), 0, sondaH - 1);
+      var i = (cy * sondaW + cx) * 4;
+      if (px[i + 2] > 128) return false;              /* la lettera */
+      var a = px[i + 1] > 127 ? 1 : px[i] / 255;
+      return a <= progress;
     }
 
     function clearTarget(t) {
@@ -1571,6 +1603,7 @@ void main(){
       get ready() { return baked; },
       /* Dove passa l'inchiostro, e quando. Vedi arrivalAt qui sopra. */
       arrivalAt: arrivalAt,
+      inkLightAt: inkLightAt,
       /* Vero solo se lo scoglio e' stato disegnato davvero. Chi nasconde il
          testo vero della pagina deve poterlo chiedere: nascondere un titolo
          che poi nessuno disegna vuol dire perderlo. */
@@ -1666,6 +1699,7 @@ void main(){
       /* Qui la mappa non esiste: non c'e' stata nessuna simulazione. Torna
          null, che e' il caso che chi chiama deve gia' saper gestire. */
       arrivalAt: function () { return null; },
+      inkLightAt: function () { return null; },
       prepare: function () { return false; },
       rebake: function () {},
       destroy: function () {

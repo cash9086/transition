@@ -61,6 +61,19 @@
     inkTime: 6.999,
     dyeRes:  768,
 
+    /* ——— il cursore del sito ————————————————————————————————————
+       Il cursore su misura decide il proprio colore leggendo il DOM sotto
+       il puntatore. Sopra questa sezione pero' non c'e' un elemento da
+       leggere: c'e' una simulazione. Quindi glielo diciamo noi.
+         cursore        l'elemento, e la variabile CSS con cui si colora
+         suBianco       colore sul bianco dell'inchiostro
+         suScuro        colore sulla lettera, o dove l'inchiostro non e'
+                        ancora arrivato e sotto si vede la slide */
+    cursore:     "#capecur",
+    cursoreVar:  "--cc",
+    suBianco:    "#141416",
+    suScuro:     "#ffffff",
+
     /* ——— avvio ——————————————————————————————————————————————————
        Su desktop il calcolo si paga sotto il preloader, mentre l'utente sta
        gia' aspettando. Su telefono no: allungherebbe troppo l'apertura. */
@@ -70,7 +83,7 @@
   };
 
   var titolo = null, sezione = null, partito = false;
-  var pin = null, copriva = false;
+  var pin = null, copriva = false, svegliaCursore = null;
   var pronto = false, salvagente = 0;
 
   /* ——— il preloader: invariato ————————————————————————————————— */
@@ -200,6 +213,49 @@
     }
   }
 
+  /* ——— il colore del cursore ————————————————————————————————————
+     Si scrive la VARIABILE, non la classe. La classe la gestisce gia' lo
+     script del cursore, che la ricalcola a ogni movimento del mouse: in due
+     a scrivere la stessa cosa ci si accapiglia e si vede sfarfallare. Uno
+     stile inline sulla variabile invece vince su tutte e due le regole del
+     suo foglio di stile, e lui puo' continuare a fare quello che ha sempre
+     fatto senza che nessuno dei due debba sapere dell'altro.
+
+     Fuori da questa sezione la variabile viene tolta, non impostata: il
+     controllo torna intero a chi ce l'aveva. */
+  function pilotaCursore() {
+    if (!global.matchMedia || !global.matchMedia("(min-width:992px) and (hover:hover)").matches) return null;
+    var cc = document.querySelector(I.cursore);
+    if (!cc || !sezione || typeof sezione.inkLightAt !== "function") return null;
+
+    var mx = -1, my = -1, atteso = false, ultimo = null;
+
+    function applica() {
+      atteso = false;
+      var l = sezione.inkLightAt(mx, my);
+      var v = l === null ? null : (l ? I.suBianco : I.suScuro);
+      if (v === ultimo) return;
+      ultimo = v;
+      if (v) cc.style.setProperty(I.cursoreVar, v);
+      else cc.style.removeProperty(I.cursoreVar);
+    }
+
+    function sveglia() {
+      if (atteso) return;
+      atteso = true;
+      global.requestAnimationFrame(applica);
+    }
+
+    global.addEventListener("mousemove", function (e) {
+      mx = e.clientX; my = e.clientY;
+      sveglia();
+    }, { passive: true });
+
+    /* Serve anche a mouse fermo: sotto scorre la sezione e l'inchiostro
+       avanza, quindi cambia il fondo senza che il puntatore si muova. */
+    return sveglia;
+  }
+
   /* ——— avvio ————————————————————————————————————————————————— */
   function monta(conInchiostro) {
     if (partito) return;
@@ -220,6 +276,7 @@
         wet:     I.bagnato
       },
       onProgress: function (p) {
+        if (svegliaCursore) svegliaCursore();
         if (!pin) return;
         var copre = p > 0.015;
         if (copre !== copriva) { copriva = copre; pin.classList.toggle("ink-copre", copre); }
@@ -229,6 +286,7 @@
       },
       onReady: function () {
         if (conInchiostro && sezione && sezione.hasObstacle && sezione.hasObstacle()) nascondi();
+        if (conInchiostro && !svegliaCursore) svegliaCursore = pilotaCursore();
         annuncia();
       }
     };

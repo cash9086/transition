@@ -42,7 +42,8 @@
     smoke: 0.45, smokeReach: 0.7,
     threshold: 0.4, softness: 0.05, edgeNoise: 0.25, edgeScale: 16,
     simRes: 128, dyeRes: 1024, advection: 1,
-    scrollSmooth: 0.5,
+    scrollSmooth: 0.5, rim: 0.35, block: 0.97,
+    wet: 7, dry: 0.1, dryLag: 0.005, clean: 3,
     pathPoints: [
       [0.9926, 0.9905], [0.9736, 0.897], [0.9615, 0.7729], [0.9531, 0.6081],
       [0.9452, 0.4016], [0.9257, 0.1901], [0.8942, 0.0868], [0.8199, 0.0573],
@@ -205,6 +206,9 @@ void main(){
    spread is the same whatever the frame rate or the playback speed. */
 const FS_EXPAND = HEAD + NOISE + `
 uniform sampler2D uSource;
+uniform sampler2D uMask;
+uniform float uHasMask;
+uniform float uBlock;
 uniform float uAspect;
 uniform float uStep;
 uniform float uVar;
@@ -221,6 +225,15 @@ void main(){
   float mag = length(gA);
   if (mag < 1e-5 || near < 0.0008) { fragColor = vec4(c, 0.0, 0.0, 1.0); return; }
   float sp = uStep * smoothstep(0.0008, 0.01, near);
+  /* Lo scoglio. La dilatazione e' il meccanismo con cui l'inchiostro avanza:
+     dentro la lettera va trenta volte piu' piano che sulla carta. Il fronte
+     che ci arriva contro, nel tempo in cui attraversa un'asta, ha gia' fatto
+     il giro completo — quindi la lettera legge come un ostacolo, ma resta un
+     ostacolo permeabile: l'inchiostro finisce per passarci sotto, come fa
+     sulla carta vera, e le pance chiuse si riempiono da sole.
+     Un divieto secco, invece, lasciava quelle pance vuote per sempre, e
+     riempirle a mano dopo voleva dire toppe dal bordo netto. */
+  if (uHasMask > 0.5) sp *= 1.0 - uBlock * texture(uMask, vUv).x;
   if (uVar > 0.0) {
     float n = fbm(vec3(vUv * uNoiseScale * 1.6, uTime * 0.12));
     sp *= mix(1.0, 0.35 + 1.5 * n, uVar);
@@ -358,6 +371,8 @@ uniform float uAmount;
 uniform float uDrag;
 uniform float uSplay;
 uniform int uIsVel;
+uniform sampler2D uMask;
+uniform float uHasMask;
 void main(){
   vec2 p = vUv - uPoint;
   p.x *= uAspect;
@@ -375,6 +390,10 @@ void main(){
     float streak = smoothstep(0.34, 1.16, s1 * 1.1 + s2 * 0.5) * 1.5;
     f *= mix(1.0, streak, uBristle);
   }
+  /* Senza questo, una pennellata che passa sopra una lettera le deposita
+     inchiostro dentro: da li' si espanderebbe verso l'esterno e la lettera,
+     invece di fermare l'inchiostro, ne diventerebbe una sorgente. */
+  if (uHasMask > 0.5) f *= 1.0 - texture(uMask, vUv).x;
   vec3 add = uIsVel == 1
     ? vec3(t * uDrag + nrm * uSplay * clamp(across / uWidth, -1.5, 1.5), 0.0)
     : vec3(uAmount, 0.0, 0.0);
@@ -429,6 +448,14 @@ void main(){
   /* Il display di produzione legge solo la mappa: niente solver per fotogramma. */
   var FS_DISPLAY = HEAD + [
     "uniform sampler2D uArrival;",
+    "uniform sampler2D uMask;",
+    "uniform vec2 uATexel;",
+    "uniform float uHasMask;",
+    "uniform float uClean;",
+    "uniform float uRim;",
+    "uniform float uWet;",
+    "uniform float uDry;",
+    "uniform float uDryLag;",
     "uniform float uProgress;",
     "uniform float uFront;",
     "uniform float uSmoke;",
@@ -437,15 +464,104 @@ void main(){
     "uniform vec3 uBg;",
     "uniform float uClear;",
     "void main(){",
-    "  float arr = max(texture(uArrival, vUv).x",
-    "            + (fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uQuant, 0.0);",
+    "  vec2 m = uHasMask > 0.5 ? texture(uMask, vUv).xy : vec2(0.0);",
+    /* La fascia: quanto siamo vicini a una lettera. Si legge dalla stessa
+       forma sfocata che serve all'assorbimento, quindi non costa niente in
+       piu'. */
+    "  float banda = smoothstep(0.012, 0.28, m.y);",
+    "  float arrRaw = texture(uArrival, vUv).x;",
+    /* L'inchiostro vero lascia dei micro-buchi: sul foglio aperto sono la
+       ragione per cui sembra inchiostro, ma quando capitano attaccati a una
+       lettera non si leggono come inchiostro — si leggono come una lettera
+       rotta. Qui dentro, e solo qui dentro, il tempo di arrivo prende il
+       minimo di un anello di campioni: un buco circondato da inchiostro gia'
+       arrivato si chiude, il bordo della lettera resta netto, e fuori dalla
+       fascia non cambia niente. */
+    "  if (uClean > 0.0 && banda > 0.0) {",
+    "    float mn = arrRaw;",
+    "    for (int i = 0; i < 8; i++) {",
+    "      float ang = float(i) * 0.7853981634;",
+    "      vec2 d = vec2(cos(ang), sin(ang)) * uATexel * uClean;",
+    "      mn = min(mn, texture(uArrival, vUv + d).x);",
+    "      mn = min(mn, texture(uArrival, vUv + d * 0.5).x);",
+    "    }",
+    "    arrRaw = mix(arrRaw, mn, banda);",
+    "  }",
+    /* Anche il pulviscolo del dither va spento nella fascia: e' l'altra
+       meta' del pizzico di sporco che sembra un difetto. */
+    "  float arr = max(arrRaw + (fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453) - 0.5)",
+    "                  * uQuant * (1.0 - banda), 0.0);",
     "  float a = smoothstep(arr, arr + uFront, uProgress);",
     "  float hazeStart = max(arr - uSmokeLead, 0.0);",
     "  a = max(a, smoothstep(hazeStart, max(arr, hazeStart + uFront), uProgress) * uSmoke);",
+    "  if (uHasMask > 0.5) {",
+    /* L'orlo: accanto alla lettera l'inchiostro risulta arrivato un filo
+       prima. E' una lettura della mappa, non una modifica del campo, quindi
+       non puo' accumularsi da un passo all'altro come faceva quando stava
+       nella simulazione. */
+    "    if (uRim > 0.0) a = max(a, smoothstep(arr - uRim * 0.06, arr, uProgress) * banda);",
+    /* Il bordo della lettera e' la lettera, non il punto in cui il rumore del
+       fronte ha smesso di mordere: il giro intorno allo scoglio e' gia'
+       avvenuto nella simulazione, qui si decide solo dove tagliare. */
+    "    float solido = smoothstep(0.35, 0.65, m.x);",
+    /* L'assorbimento, rifatto con l'inchiostro invece che sul testo. Appena
+       l'inchiostro arriva la riserva e' larga quanto la forma sfocata: si
+       vede una macchia gonfia dal bordo morbido. Poi la soglia sale, il
+       gonfio non basta piu', e la macchia si ritira fino alla lettera. Il
+       bordo intanto passa da sbavato a netto: bagnato sbava, asciutto no. */
+    "    if (uWet > 0.5) {",
+    "      float q = smoothstep(arr + uDryLag, arr + uDryLag + uDry, uProgress);",
+    "      float soglia = mix(0.045, 1.05, q);",
+    "      solido = max(solido, smoothstep(soglia, soglia + mix(0.20, 0.03, q), m.y));",
+    "    }",
+    "    a *= 1.0 - solido;",
+    "  }",
     /* uClear 0: fondo opaco, la sezione e' autosufficiente.
        uClear 1: solo inchiostro bianco premoltiplicato, alpha = copertura,
        cosi' sotto si vede quello che c'e' davvero invece del nero. */
     "  fragColor = mix(vec4(mix(uBg, vec3(1.0), a), 1.0), vec4(a, a, a, a), uClear);",
+    "}"
+  ].join("\n");
+
+  /* Gli occhielli chiusi — la pancia della D, della O, della A — sono
+     circondati dalla lettera da tutte le parti: l'inchiostro che arriva da
+     fuori non ha nessuna strada per entrarci, e resterebbero neri per
+     sempre. Su carta vera non succede, perche' l'inchiostro passa sotto il
+     segno per capillarita'. Questo e' quel passaggio: dopo la cottura il
+     tempo di arrivo si propaga di una cella per passata nelle zone mai
+     raggiunte, attraversando la lettera. Ogni passata aggiunge un filo di
+     ritardo, quindi l'occhiello si riempie poco dopo il contorno, non
+     insieme a lui. */
+  var FS_SEEP = HEAD + [
+    "uniform sampler2D uArrival;",
+    "uniform float uLag;",
+    "void main(){",
+    "  float c = texture(uArrival, vUv).x;",
+    "  if (c <= 1.5) { fragColor = vec4(c, 0.0, 0.0, 1.0); return; }",
+    "  float best = 2.0;",
+    "  float v;",
+    "  v = texture(uArrival, vL).x; if (v <= 1.5) best = min(best, v);",
+    "  v = texture(uArrival, vR).x; if (v <= 1.5) best = min(best, v);",
+    "  v = texture(uArrival, vT).x; if (v <= 1.5) best = min(best, v);",
+    "  v = texture(uArrival, vB).x; if (v <= 1.5) best = min(best, v);",
+    "  fragColor = vec4(best > 1.5 ? 2.0 : best + uLag, 0.0, 0.0, 1.0);",
+    "}"
+  ].join("\n");
+
+  /* Azzera un campo dentro lo scoglio. Niente di piu': qui si e' tentato di
+     aggiungere un "orlo", cioe' di caricare un filo la densita' appena fuori
+     dalla lettera per far leggere l'urto. Era sbagliato — questa passata gira
+     a ogni passo, quindi non aggiungeva un orlo, moltiplicava lo stesso
+     bordo centinaia di volte. Quel bordo diventava saturo, risultava
+     raggiunto dal primo istante e colava di lato: le lettere apparivano
+     tagliate da strisce bianche. L'accumulo contro la lettera lo fa gia' la
+     dilatazione bloccata, che e' il posto giusto per farlo. */
+  var FS_BLOCK = HEAD + [
+    "uniform sampler2D uField;",
+    "uniform sampler2D uMask;",
+    "void main(){",
+    "  if (texture(uMask, vUv).x > 0.5) { fragColor = vec4(0.0); return; }",
+    "  fragColor = texture(uField, vUv);",
     "}"
   ].join("\n");
 
@@ -508,7 +624,8 @@ void main(){
     }
     stick.insertBefore(canvas, stick.firstChild);
 
-    var reduced = global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var reduced = !opts.ignoreReducedMotion
+               && global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var gl = null;
     if (!reduced) {
       try {
@@ -567,7 +684,8 @@ void main(){
     var P_CLEAR = new Program(FS_CLEAR), P_PRESSURE = new Program(FS_PRESSURE);
     var P_GRADIENT = new Program(FS_GRADIENT), P_BRUSH = new Program(FS_BRUSH);
     var P_ARRIVAL = new Program(FS_ARRIVAL), P_DISPLAY = new Program(FS_DISPLAY);
-    var P_PROBE = new Program(FS_PROBE);
+    var P_PROBE = new Program(FS_PROBE), P_BLOCK = new Program(FS_BLOCK);
+    var P_SEEP = new Program(FS_SEEP);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, -1, 1, 1, 1, 1, -1]), gl.STATIC_DRAW);
@@ -681,6 +799,7 @@ void main(){
       dyeTmp2 = createFBO(ink.w, ink.h, gl.R16F, gl.RED, HALF, L);
       arrival = createDouble(ink.w, ink.h, gl.R16F, gl.RED, HALF, gl.NEAREST);
       clearArrival();
+      buildMask();
     }
 
     /* ---- la mappa di arrivo, leggibile dalla pagina ----
@@ -725,6 +844,68 @@ void main(){
       return px[i + 1] > 127 ? 1 : px[i] / 255;
     }
 
+    /* ---- lo scoglio ----
+       La pagina disegna, il motore misura. opts.obstacle riceve un contesto
+       2D grande quanto la griglia dell'inchiostro e ci dipinge di bianco
+       cio' che e' solido: il motore non ha idea che siano lettere, e non
+       deve averla. */
+    var maskTex = null, hasMask = 0;
+
+    function buildMask() {
+      hasMask = 0;
+      if (typeof opts.obstacle !== "function" || !dye) return;
+      var w = dye.read.width, h = dye.read.height;
+      var cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      var ctx = cv.getContext("2d");
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
+      /* Due forme nello stesso disegno, una per canale, sommate invece che
+         sovrapposte: la seconda non deve cancellare la prima.
+           VERDE  la stessa lettera sfocata — la macchia bagnata, cioe' fin
+                  dove l'inchiostro si ferma nel primo istante.
+           ROSSO  la lettera esatta — quella che resta quando e' asciutta.
+         La simulazione guarda solo il rosso: gira intorno alla lettera vera.
+         Il verde serve al momento di disegnare, per far ritirare la macchia
+         fino al rosso. */
+      ctx.globalCompositeOperation = "lighter";
+      try {
+        if (prm.wet > 0) {
+          ctx.filter = "blur(" + prm.wet + "px)";
+          ctx.fillStyle = "#00ff00";
+          opts.obstacle(ctx, w, h);
+          ctx.filter = "none";
+        }
+        ctx.fillStyle = "#ff0000";
+        opts.obstacle(ctx, w, h);
+      } catch (e) { return; }
+      if (!maskTex) maskTex = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, maskTex);
+      /* Il canvas 2D conta le righe dall'alto, la texture dal basso. */
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      hasMask = 1;
+    }
+
+    function attachMask(unit) {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, maskTex);
+      return unit;
+    }
+
+    function blocca(campo, texel) {
+      if (!hasMask) return;
+      var u = P_BLOCK.bind(texel[0], texel[1]);
+      gl.uniform1i(u.uField, campo.read.attach(0));
+      gl.uniform1i(u.uMask, attachMask(1));
+      blit(campo.write); campo.swap();
+    }
+
     function clearTarget(t) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
       gl.viewport(0, 0, t.width, t.height);
@@ -753,6 +934,8 @@ void main(){
       var hx = (Math.abs(tx) * reachA + Math.abs(ty) * 2.4 * width) / aspect;
       var hy = Math.abs(ty) * reachA + Math.abs(tx) * 2.4 * width;
       var u = P_BRUSH.bind();
+      gl.uniform1i(u.uMask, hasMask ? attachMask(3) : 3);
+      gl.uniform1f(u.uHasMask, hasMask);
       gl.uniform2f(u.uPoint, cx, cy);
       gl.uniform2f(u.uDir, tx, ty);
       gl.uniform1f(u.uHalfLen, halfLen);
@@ -823,6 +1006,11 @@ void main(){
       gl.uniform1f(u.uProject, prm.project);
       blit(velocity.write); velocity.swap();
 
+      /* Velocita' zero dentro lo scoglio: il campo che il passo successivo
+         proietta vede una parete, quindi la corrente devia invece di
+         attraversarla. */
+      blocca(velocity, vt);
+
       u = P_ADVECT.bind(vt[0], vt[1]);
       gl.uniform1i(u.uVelocity, velocity.read.attach(0));
       gl.uniform1i(u.uSource, velocity.read.attach(0));
@@ -889,13 +1077,17 @@ void main(){
         gl.uniform1f(u.uAspect, canvas.width / canvas.height);
         gl.uniform1f(u.uStep, total / iters);
         gl.uniform1f(u.uVar, prm.expandVar);
+        gl.uniform1f(u.uBlock, prm.block);
         gl.uniform1f(u.uNoiseScale, prm.noiseScale);
         gl.uniform1f(u.uTime, simTime);
         for (var j = 0; j < iters; j++) {
           gl.uniform1i(u.uSource, dye.read.attach(0));
+          gl.uniform1i(u.uMask, hasMask ? attachMask(1) : dye.read.attach(0));
+          gl.uniform1f(u.uHasMask, hasMask);
           blit(dye.write); dye.swap();
         }
       }
+
     }
 
     /* ---- il tracciato ---- */
@@ -1184,6 +1376,14 @@ void main(){
     function render(p) {
       var u = P_DISPLAY.bind();
       gl.uniform1i(u.uArrival, arrival.read.attach(0));
+      gl.uniform1i(u.uMask, hasMask ? attachMask(1) : arrival.read.attach(0));
+      gl.uniform1f(u.uHasMask, hasMask);
+      gl.uniform1f(u.uRim, prm.rim);
+      gl.uniform2f(u.uATexel, arrival.texelX, arrival.texelY);
+      gl.uniform1f(u.uClean, prm.clean);
+      gl.uniform1f(u.uWet, prm.wet > 0 && prm.dry > 0 ? 1 : 0);
+      gl.uniform1f(u.uDry, Math.max(prm.dry, 1e-4));
+      gl.uniform1f(u.uDryLag, prm.dryLag);
       gl.uniform1f(u.uProgress, p);
       gl.uniform1f(u.uFront, FRONT_SOFT);
       gl.uniform1f(u.uSmoke, prm.smoke);
@@ -1324,6 +1524,20 @@ void main(){
         return progress;
       },
       rebake: function () { baked = false; if (active) startBake(); },
+      /* Cambia un parametro al volo. Vale per quelli che agiscono al momento
+         di disegnare — dry, dryLag, rim: la mappa non c'entra, quindi non si
+         ricalcola niente. Gli altri li ignora apposta, per non far credere
+         che abbiano avuto effetto. */
+      tune: function (k, v) {
+        if (k !== "dry" && k !== "dryLag" && k !== "rim" && k !== "clean") return false;
+        prm[k] = v;
+        if (baked) render(progress);
+        return true;
+      },
+      /* Cambia il testo dello scoglio: si ridisegna la maschera e si
+         ricalcola. Non si puo' evitare il ricalcolo — la mappa di arrivo
+         dipende da dove stanno le lettere. */
+      redrawObstacle: function () { buildMask(); baked = false; sondaDati = null; if (active) startBake(); },
       /* Fa partire il calcolo adesso, anche se la sezione e' lontanissima:
          serve a un preloader che vuole pagarlo mentre l'utente aspetta gia'.
          A calcolo finito, se la sezione non e' in vista, si rispegne da sola.

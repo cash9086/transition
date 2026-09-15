@@ -1,231 +1,256 @@
 /*
  * cape-ink-title — il titolo della sezione ink-bleed di The Cape Studio.
  *
- * Fa due cose che stanno insieme perche' sono la stessa cosa: come e' fatto
- * il titolo, e come arriva.
+ * Il titolo non e' piu' testo dipinto dal browser: e' il buco che
+ * l'inchiostro non riempie. La lettera viene consegnata alla simulazione
+ * come ostacolo — l'inchiostro ci sbatte contro, rallenta, le gira intorno —
+ * e cio' che resta scoperto e' la slide scura di sotto. Il nero delle
+ * lettere quindi non e' un colore scelto: e' quello che c'e' sotto
+ * l'inchiostro.
  *
- *   ASPETTO   colore, carattere, corpo. Stanno qui e non nel custom code
- *             della pagina apposta: cosi' si cambiano da GitHub, cambiando
- *             solo lo SHA nell'indirizzo, senza rientrare in Webflow.
+ * Sopra ci sta l'assorbimento: appena l'inchiostro arriva, la riserva e'
+ * larga quanto la lettera sfocata — una macchia gonfia dal bordo morbido —
+ * e si ritira fino alla forma esatta man mano che la carta beve. Ogni
+ * lettera comincia quando l'inchiostro ci arriva, quindi si asciugano
+ * sfalsate senza che nessuna sequenza sia scritta da qualche parte.
  *
- *   ARRIVO    ogni lettera chiede a ink-transition a che progresso
- *             l'inchiostro le passa sopra — una lettura sola, a calcolo
- *             finito — e da li' si asciuga per conto suo: arriva come
- *             macchia bagnata e gonfia, la carta beve, il segno si stringe
- *             fino a diventare lettera. Non c'e' nessuna sequenza scritta a
- *             mano: l'ordine in cui si accendono e' quello vero della
- *             pennellata, che serpeggia da destra a sinistra.
+ * COSA SERVE IN PAGINA: niente. Due tag <script> nel footer, questo dopo
+ * ink-transition.js. Tutti i numeri stanno qui sotto: per cambiarli si
+ * cambia questo file e si aggiorna lo SHA nell'indirizzo, senza rientrare
+ * nel custom code di Webflow.
  *
- * Uso, nel footer della pagina, dopo ink-transition.js:
- *
- *   var titolo = CapeInkTitle.prepara();
- *   InkTransition.mount({
- *     ...,
- *     onProgress: titolo.onProgress,
- *     onReady:    titolo.onReady
- *   });
- *
- * NOTA sul foglio di stile: il blocco qui sotto viene aggiunto in fondo alla
- * head, quindi vince per ordine su una regola .ink-title scritta nel custom
- * code della pagina. Se li' dentro c'e' ancora un vecchio colore, non e' piu'
- * lui a comandare: si puo' cancellare quando capita.
+ * IL TESTO invece resta in Webflow, dentro .ink-title, e si modifica dal
+ * Designer come qualunque altro testo: questo modulo lo legge, lo nasconde
+ * agli occhi (non agli screen reader) e lo ridisegna dentro l'inchiostro
+ * con il carattere e il corpo che gli trova addosso.
  */
 (function (global) {
   "use strict";
 
-  var DEFAULT = {
-    /* ——— aspetto ———————————————————————————————————————————————— */
-    colore:     "#141416",   /* lo stesso nero della slide sotto l'inchiostro */
+  var I = {
+    /* ——— dove ——————————————————————————————————————————————————— */
+    pin:    ".ink-pin",
+    stick:  ".ink-stick",
+    titolo: "[data-ink-reveal], .ink-title",
+
+    /* ——— aspetto del titolo ————————————————————————————————————— */
     famiglia:   '"Glamor-LightCondensed","Oswald","Archivo Narrow",sans-serif',
     peso:       "300",
-    corpo:      "150px",     /* su schermo largo; sotto scende, vedi CSS */
+    corpo:      "150px",   /* su schermo largo; sotto scende, vedi vesti() */
     interlinea: ".9",
     spaziatura: ".02em",
+    colore:     "#141416", /* conta solo nel ripiego a testo visibile */
 
-    /* ——— assorbimento ——————————————————————————————————————————— */
-    ritardo:    0.015,  /* quanto aspetta una lettera dopo che l'inchiostro l'ha coperta */
-    durata:     0.13,   /* quanto ci mette ad asciugare, in frazione di sezione */
-    sbavo:      13,     /* px di sbavatura nell'istante piu' bagnato */
-    soglia:     0.16,   /* dove si ferma la macchia: piu' basso = piu' gonfia */
-    /* Quanto poco ci mette una lettera a prendere colore pieno. Corto
-       apposta: l'inchiostro vero non sbiadisce mentre si posa, cade gia'
-       nero e cambia solo forma. Alzandolo si torna a una comparsa in
-       dissolvenza, cioe' a del grigio. */
-    apparizione: 0.12,
+    /* ——— l'inchiostro ———————————————————————————————————————————
+       freno        quanto l'inchiostro rallenta dentro la lettera.
+                    Basso = ci passa quasi attraverso e la scia dietro la
+                    lettera e' leggera; alto = la aggira del tutto e lascia
+                    una scia scura piu' lunga.
+       asciugatura  quanto ci mette la macchia gonfia a ritirarsi fino alla
+                    lettera. A 0 la lettera e' netta dal primo istante.
+       pulizia      raggio, in celle, entro cui i micro-buchi
+                    dell'inchiostro vengono chiusi ACCANTO alle lettere.
+                    Fuori da quella fascia il foglio resta sporco: e' lo
+                    sporco a far sembrare inchiostro l'inchiostro.
+       bagnato      quanto e' larga la macchia nel primo istante. */
+    freno:       0.70,
+    asciugatura: 0.10,
+    pulizia:     5,
+    bagnato:     7,
 
-    /* ——— dove ——————————————————————————————————————————————————— */
-    titolo: "[data-ink-reveal], .ink-title"
+    inkTime: 6.999,
+    dyeRes:  768,
+
+    /* ——— avvio ——————————————————————————————————————————————————
+       Su desktop il calcolo si paga sotto il preloader, mentre l'utente sta
+       gia' aspettando. Su telefono no: allungherebbe troppo l'apertura. */
+    preparaDa:    992,
+    salvagenteMs: 15000,
+    attesaFont:   3000
   };
 
-  function lisci(a, b, x) { var t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); }
-  function fuori(t) { return 1 - Math.pow(1 - t, 3); }
-  function tre(v) { return Math.round(v * 1000) / 1000; }
+  var titolo = null, sezione = null, partito = false;
+  var pronto = false, salvagente = 0;
 
-  function vesti(o) {
+  /* ——— il preloader: invariato ————————————————————————————————— */
+  function annuncia() {
+    if (pronto) return;
+    pronto = true;
+    clearTimeout(salvagente);
+    document.documentElement.classList.add("ink-pronto");
+    document.dispatchEvent(new CustomEvent("cape:ink-pronto"));
+  }
+
+  /* ——— si puo' fare l'inchiostro su questa macchina? ————————————
+     Va chiesto PRIMA di nascondere il titolo. Se si nasconde e poi il
+     modulo ripiega su una spazzata senza simulazione, il titolo non lo
+     disegna piu' nessuno e sparisce per sempre. */
+  function haInchiostro() {
+    if (global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
+    try {
+      var c = document.createElement("canvas");
+      var g = c.getContext("webgl2", { alpha: true, depth: false, stencil: false });
+      return !!(g && g.getExtension("EXT_color_buffer_float"));
+    } catch (e) { return false; }
+  }
+
+  /* ——— il vestito ————————————————————————————————————————————
+     Le stesse proprieta' servono due volte: al browser per dare al testo
+     una misura, e a noi per rileggerle da li' e ridisegnarlo dentro
+     l'inchiostro. Una sola fonte, quindi, e resta sovrascrivibile dal
+     custom code della pagina se un domani serve. */
+  function vesti(nascondi) {
     if (document.getElementById("cape-ink-title-css")) return;
     var s = document.createElement("style");
     s.id = "cape-ink-title-css";
     s.textContent =
-      "/* cape-ink-title: aspetto del titolo. Arriva da GitHub, non dal\n" +
-      "   custom code della pagina. */\n" +
       ".ink-title{" +
-        "font-family:" + o.famiglia + ";" +
-        "font-weight:" + o.peso + ";" +
-        "font-size:" + o.corpo + ";" +
-        "line-height:" + o.interlinea + ";" +
-        "letter-spacing:" + o.spaziatura + ";" +
-        "color:" + o.colore + ";" +
+        "font-family:" + I.famiglia + ";" +
+        "font-weight:" + I.peso + ";" +
+        "font-size:" + I.corpo + ";" +
+        "line-height:" + I.interlinea + ";" +
+        "letter-spacing:" + I.spaziatura + ";" +
+        "color:" + I.colore + ";" +
       "}\n" +
       /* Il corpo pieno vale finche' c'e' schermo. Sotto scende in
          proporzione e non risale mai oltre: e' min(), non una seconda
          misura fissa. */
-      "@media (max-width:1200px){.ink-title{font-size:min(" + o.corpo + ",12.5vw)}}\n" +
-      "@media (max-width:600px){.ink-title{font-size:11vw;line-height:1}}";
+      "@media (max-width:1200px){.ink-title{font-size:min(" + I.corpo + ",12.5vw)}}\n" +
+      "@media (max-width:600px){.ink-title{font-size:11vw;line-height:1}}\n" +
+      /* Invisibile, non rimosso: resta nel documento con la sua misura,
+         perche' e' da li' che si legge come va disegnato, e resta leggibile
+         da uno screen reader e da Google. Se questo file non gira, questa
+         riga non viene mai scritta e il titolo si vede normalmente. */
+      (nascondi ? ".ink-title{opacity:0}\n" : "");
     document.head.appendChild(s);
   }
 
-  function prepara(opzioni) {
-    var o = {}, k;
-    for (k in DEFAULT) if (Object.prototype.hasOwnProperty.call(DEFAULT, k)) o[k] = DEFAULT[k];
-    if (opzioni) for (k in opzioni) if (k in o) o[k] = opzioni[k];
+  /* ——— lo scoglio ————————————————————————————————————————————
+     Il motore passa un contesto 2D grande quanto la griglia dell'inchiostro
+     e chiede di dipingere di bianco cio' che e' solido. Non sa che siano
+     lettere, e non deve saperlo. */
+  function scoglio(ctx, w, h) {
+    if (!titolo) return;
+    var rect = titolo.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
 
-    var muto = { onProgress: function () {}, onReady: function () {} };
-    var titolo = document.querySelector(o.titolo);
-    if (!titolo) return muto;
-
-    var ridotto = !!(global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches);
-    var pezzi = [], filtri = [], arrivi = [], ultimo = [];
-    var misurato = false, ultimoP = 0;
-
-    vesti(o);
-
-    /* Chi ha chiesto meno movimento non vuole tredici lettere che si
-       muovono: torna la dissolvenza semplice di prima, sul titolo intero. */
-    if (ridotto) {
-      titolo.style.opacity = "0";
-      return {
-        onProgress: function (p) { titolo.style.opacity = lisci(0.86, 1, p).toFixed(3); },
-        onReady: function () {}
-      };
-    }
-
-    /* ——— il titolo, lettera per lettera ——————————————————————————— */
+    var st = global.getComputedStyle(titolo);
     var testo = (titolo.textContent || "").replace(/\s+/g, " ").trim();
-    if (!testo) return muto;
-    /* Il nome accessibile resta la frase intera: senza questo uno screen
-       reader leggerebbe quindici lettere staccate. */
-    titolo.setAttribute("aria-label", testo);
-    var guscio = document.createElement("span");
-    guscio.setAttribute("aria-hidden", "true");
-    for (var i = 0; i < testo.length; i++) {
-      /* Gli spazi restano testo nudo, non span: da 600px in giu' il titolo
-         puo' andare a capo, e si va a capo solo su uno spazio vero. */
-      if (testo[i] === " ") { guscio.appendChild(document.createTextNode(" ")); continue; }
-      var s = document.createElement("span");
-      s.textContent = testo[i];
-      s.style.display = "inline-block";
-      /* Nascoste da JS e non da CSS, come faceva il modulo: se questo codice
-         non gira, il titolo resta visibile invece di sparire per sempre. */
-      s.style.opacity = "0";
-      guscio.appendChild(s);
-      pezzi.push(s);
-    }
-    titolo.textContent = "";
-    titolo.appendChild(guscio);
+    if (!testo) return;
 
-    /* ——— un filtro per lettera —————————————————————————————————————
-       Acceso solo su quelle che stanno asciugando in quel momento: due o
-       tre alla volta, non tutte. */
-    var ns = "http://www.w3.org/2000/svg";
-    var svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("width", "0"); svg.setAttribute("height", "0");
-    svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
-    svg.style.position = "absolute";
-    var defs = document.createElementNS(ns, "defs");
-    for (i = 0; i < pezzi.length; i++) {
-      var f = document.createElementNS(ns, "filter");
-      f.setAttribute("id", "cape-assorbe-" + i);
-      /* Regione larga: nel primo istante la macchia esce parecchio dal
-         riquadro della lettera, e il -10%/+10% di default la taglierebbe. */
-      f.setAttribute("x", "-70%"); f.setAttribute("y", "-70%");
-      f.setAttribute("width", "240%"); f.setAttribute("height", "240%");
-      f.setAttribute("color-interpolation-filters", "sRGB");
-      var b = document.createElementNS(ns, "feGaussianBlur");
-      b.setAttribute("in", "SourceGraphic"); b.setAttribute("stdDeviation", "0");
-      var m = document.createElementNS(ns, "feColorMatrix");
-      m.setAttribute("type", "matrix");
-      m.setAttribute("values", "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0");
-      f.appendChild(b); f.appendChild(m); defs.appendChild(f);
-      filtri.push({ b: b, m: m, url: "url(#cape-assorbe-" + i + ")" });
-      ultimo.push(-1);
-    }
-    svg.appendChild(defs);
-    document.body.appendChild(svg);
+    /* Da pixel CSS a celle della griglia. */
+    var k = w / rect.width;
+    var corpo = (parseFloat(st.fontSize) || 150) * k;
+    var sp = (st.letterSpacing === "normal" ? 0 : parseFloat(st.letterSpacing) || 0) * k;
+    var alt = (parseFloat(st.lineHeight) || (corpo / k)) * k;
 
-    /* ——— dove passa l'inchiostro, lettera per lettera ————————————————
-       Una lettura sola per lettera, a calcolo finito. Da qui in poi
-       l'animazione e' aritmetica. */
-    function misura() {
-      var sez = global.inkSection;
-      var tela = sez && sez.element;
-      if (!tela) return;
-      var r = tela.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      for (var j = 0; j < pezzi.length; j++) {
-        var q = pezzi[j].getBoundingClientRect();
-        var u = (q.left + q.width / 2 - r.left) / r.width;
-        var v = (q.top + q.height / 2 - r.top) / r.height;
-        var a = sez.arrivalAt ? sez.arrivalAt(u, v) : null;
-        /* Ripiego, se la mappa non c'e' (niente WebGL, o una versione vecchia
-           del modulo rimasta in cache): una rampa da destra a sinistra, che e'
-           il verso in cui il pennello va davvero. Somiglia, ma non e'
-           agganciata: e' il piano B, non il piano. */
-        if (a === null || a === undefined || a !== a) {
-          a = 0.62 + 0.22 * (1 - j / Math.max(1, pezzi.length - 1));
-        }
-        arrivi[j] = a;
-        ultimo[j] = -1;
-      }
-      misurato = true;
-      disegna(ultimoP);
+    ctx.font = st.fontWeight + " " + corpo + "px " + st.fontFamily;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+
+    function largo(t) {
+      var l = 0;
+      for (var i = 0; i < t.length; i++) l += ctx.measureText(t[i]).width + sp;
+      return l - (t.length ? sp : 0);
     }
 
-    /* ——— un fotogramma ————————————————————————————————————————— */
-    function disegna(p) {
-      ultimoP = p;
-      if (!misurato) return;
-      for (var j = 0; j < pezzi.length; j++) {
-        var da = Math.min(arrivi[j] + o.ritardo, 0.93);
-        var q = lisci(da, Math.min(da + o.durata, 0.995), p);
-        /* Salta il lavoro inutile, ma mai i due estremi: sono loro che
-           spengono il filtro. */
-        if (q > 0 && q < 1 && Math.abs(q - ultimo[j]) < 0.004) continue;
-        ultimo[j] = q;
-        var st = pezzi[j].style, fl = filtri[j];
-        if (q <= 0) { st.opacity = "0"; st.filter = "none"; st.transform = "none"; continue; }
-        if (q >= 1) { st.opacity = "1"; st.filter = "none"; st.transform = "none"; continue; }
-        /* Sfocare e poi rialzare il contrasto dell'alpha non da' una
-           sfocatura: da' una macchia. La soglia bassa allarga il segno invece
-           di scioglierlo, ed e' questo che lo fa leggere come inchiostro
-           assorbito e non come un fuori fuoco. */
-        var pend = 1 + 22 * Math.pow(1 - q, 1.4);
-        fl.b.setAttribute("stdDeviation", tre(o.sbavo * Math.pow(1 - q, 1.8)));
-        fl.m.setAttribute("values", "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 " +
-          tre(pend) + " " + tre(-(pend - 1) * o.soglia));
-        st.filter = fl.url;
-        st.opacity = lisci(0, o.apparizione, q).toFixed(3);
-        st.transform = "scale(" + tre(1 + 0.04 * (1 - fuori(q))) + ")";
+    /* Le righe: si va a capo solo se non ci sta, e solo su uno spazio —
+       come fa il titolo in pagina sotto i 600px. */
+    var righe = [], corrente = "", parole = testo.split(" "), i;
+    var tetto = w * 0.94;
+    for (i = 0; i < parole.length; i++) {
+      var prova = corrente ? corrente + " " + parole[i] : parole[i];
+      if (corrente && largo(prova) > tetto) { righe.push(corrente); corrente = parole[i]; }
+      else corrente = prova;
+    }
+    if (corrente) righe.push(corrente);
+
+    /* Le maiuscole si centrano sull'altezza delle maiuscole, non sulla
+       riga: con un titolo tutto in maiuscolo, centrare sulla riga lo fa
+       sedere basso. */
+    var m = ctx.measureText("H");
+    var mezzeMaiuscole = (m.actualBoundingBoxAscent || corpo * 0.7) / 2;
+    var y0 = h / 2 - (righe.length - 1) * alt / 2 + mezzeMaiuscole;
+
+    for (i = 0; i < righe.length; i++) {
+      var r = righe[i], x = w / 2 - largo(r) / 2, y = y0 + i * alt;
+      for (var j = 0; j < r.length; j++) {
+        var c = r[j], lc = ctx.measureText(c).width;
+        ctx.fillText(c, x + lc / 2, y);
+        x += lc + sp;
       }
     }
-
-    return {
-      onProgress: disegna,
-      /* Rimandato di un giro: senza WebGL il modulo chiama onReady durante il
-         mount, quando inkSection non e' ancora assegnata. Vale anche per i
-         ricalcoli dopo un resize: mappa nuova, lettere da rileggere. */
-      onReady: function () { setTimeout(misura, 0); }
-    };
   }
 
-  global.CapeInkTitle = { prepara: prepara, default: DEFAULT };
+  /* ——— avvio ————————————————————————————————————————————————— */
+  function monta(conInchiostro) {
+    if (partito) return;
+    partito = true;
+
+    var opzioni = {
+      pin: I.pin,
+      stick: I.stick,
+      transparent: true,
+      bakeBudgetMs: 4,
+      params: {
+        inkTime: I.inkTime,
+        dyeRes:  I.dyeRes,
+        block:   I.freno,
+        dry:     I.asciugatura,
+        clean:   I.pulizia,
+        wet:     I.bagnato
+      },
+      onBakeProgress: function (p) {
+        document.documentElement.style.setProperty("--ink-avanzamento", (p * 100).toFixed(1) + "%");
+      },
+      onReady: annuncia
+    };
+
+    if (conInchiostro) opzioni.obstacle = scoglio;
+    /* Senza inchiostro il titolo resta testo vero e si limita a comparire,
+       come faceva prima che tutto questo esistesse. */
+    else opzioni.reveal = I.titolo;
+
+    sezione = InkTransition.mount(opzioni);
+    global.inkSection = sezione;
+
+    /* Ultima rete: haInchiostro() copre i casi noti, ma se il modulo ripiega
+       lo stesso — uno shader che non compila su una scheda strana — il titolo
+       resterebbe nascosto senza che nessuno lo disegni. Qui lo si riaccende. */
+    if (conInchiostro && sezione && typeof sezione.redrawObstacle !== "function") {
+      var css = document.getElementById("cape-ink-title-css");
+      if (css) css.textContent = css.textContent.replace(".ink-title{opacity:0}", "");
+    }
+
+    var anticipa = sezione && global.innerWidth >= I.preparaDa && sezione.prepare();
+    if (!anticipa) annuncia();
+  }
+
+  function boot() {
+    /* rete di sicurezza: se il calcolo non finisce mai — scheda che
+       rinuncia, scheda del browser aperta in secondo piano — il preloader
+       non deve restare su per sempre */
+    salvagente = setTimeout(annuncia, I.salvagenteMs);
+
+    if (!global.InkTransition || !document.querySelector(I.pin)) { annuncia(); return; }
+
+    titolo = document.querySelector(I.titolo);
+    var conInchiostro = haInchiostro();
+    if (titolo) vesti(conInchiostro);
+
+    /* Lo scoglio ha la forma del carattere: aspettarlo non e' un vezzo, con
+       il ripiego la lettera avrebbe un'altra larghezza. Ma non si aspetta
+       all'infinito. */
+    if (conInchiostro && document.fonts && document.fonts.ready) {
+      var t = setTimeout(function () { monta(true); }, I.attesaFont);
+      document.fonts.ready.then(function () { clearTimeout(t); monta(true); });
+    } else {
+      monta(conInchiostro);
+    }
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+
+  global.CapeInkTitle = { impostazioni: I, ridisegna: function () { if (sezione && sezione.redrawObstacle) sezione.redrawObstacle(); } };
 })(typeof window !== "undefined" ? window : this);

@@ -67,6 +67,23 @@
     inkTime: 6.999,
     dyeRes:  768,
 
+    /* ——— la corsa —————————————————————————————————————
+       Quanto scroll della sezione resta FUORI dalla corsa dell'inchiostro:
+       'partenza' in testa, 'arrivo' in coda. Quel che avanza in mezzo e' la
+       corsa utile, ed e' li' dentro che il bianco copre lo schermo — e
+       quindi che la slide di sotto si dissolve.
+
+       I valori di fabbrica del modulo sono 0.06 e 0.12: corsa utile 0.82.
+       Qui la coda e' allungata fino a lasciarne 0.697, cioe' un 15% in meno.
+       Il bianco pieno — e con lui la dissolvenza della slide — arriva un 15%
+       di scroll prima; quel 15% diventa bianco fermo in cima alla sezione.
+
+       Per rimetterla com'era: arrivo 0.12. Per anticipare di piu' o di meno:
+       arrivo = 1 - partenza - 0.82 * (1 - anticipo), dove 'anticipo' e' la
+       frazione da guadagnare (0.15 = 15%). */
+    partenza: 0.06,
+    arrivo:   0.243,
+
     /* ——— il cursore del sito ————————————————————————————————————
        Il cursore su misura decide il proprio colore leggendo il DOM sotto
        il puntatore. Sopra questa sezione pero' non c'e' un elemento da
@@ -271,6 +288,8 @@
       pin: I.pin,
       stick: I.stick,
       transparent: true,
+      lead: I.partenza,
+      tail: I.arrivo,
       letterColor: I.colore,
       bakeBudgetMs: 4,
       params: {

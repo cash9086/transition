@@ -33,9 +33,15 @@
     stick:  ".ink-stick",
     titolo: "[data-ink-reveal], .ink-title",
 
-    /* ——— aspetto del titolo ————————————————————————————————————— */
-    famiglia:   '"Glamor-LightCondensed","Oswald","Archivo Narrow",sans-serif',
-    peso:       "300",
+    /* ——— aspetto del titolo —————————————————————————————————————
+       Il nome della famiglia e' quello con cui Webflow ha registrato il
+       font custom, non quello del file: all'upload se lo ricava dal nome
+       del file e ci lascia attaccato l'hash. Sembra un refuso e non lo e':
+       riscritto come "PP Editorial New" il titolo resta senza font. Per
+       averlo pulito va ricaricato in Webflow con quel nome, e allora si
+       cambia questa riga. */
+    famiglia:   '"Ppeditorialnew Bf 644 B 21500 D 0 C 0",Georgia,serif',
+    peso:       "200",     /* l'unico taglio caricato: PP Editorial New Ultralight */
     corpo:      "150px",   /* su schermo largo; sotto scende, vedi vesti() */
     interlinea: ".9",
     spaziatura: ".02em",

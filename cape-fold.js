@@ -565,39 +565,59 @@
 
      Resta affine, quindi manda rette in rette: e' tutto quello che serve
      perche' le aste restino dritte e dure. */
+  /* L'asse di una riga, la sua lunghezza e il suo centro.
+
+     La direzione NON si prende dai due capi. Su un anello chiuso — la O, la Q —
+     primo e ultimo punto sono lo stesso punto: direzione nulla, lunghezza
+     zero, e il fattore di allungamento diventa un numero assurdo. La O non si
+     piegava, esplodeva. Si prende invece la direzione principale di tutti i
+     punti della riga: su una barra dritta coincide con quella dei capi, su un
+     anello chiuso esiste comunque, e su un arco e' quella giusta. */
+  function asse(P) {
+    var n = P.length, i, cx = 0, cy = 0;
+    for (i = 0; i < n; i++) { cx += P[i][0]; cy += P[i][1]; }
+    cx /= n; cy /= n;
+    var sxx = 0, sxy = 0, syy = 0;
+    for (i = 0; i < n; i++) {
+      var dx = P[i][0] - cx, dy = P[i][1] - cy;
+      sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+    }
+    var th = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    var ux = Math.cos(th), uy = Math.sin(th);
+    var mn = Infinity, mx = -Infinity;
+    for (i = 0; i < n; i++) {
+      var t = (P[i][0] - cx) * ux + (P[i][1] - cy) * uy;
+      if (t < mn) mn = t;
+      if (t > mx) mx = t;
+    }
+    return { cx: cx, cy: cy, ux: ux, uy: uy, L: Math.max(mx - mn, 1e-4) };
+  }
+
+  /* Il moto di una RIGA: ruota, trasla, e si allunga o si accorcia LUNGO IL
+     PROPRIO ASSE. Nient'altro. Non si spezza mai.
+
+     Non e' una similitudine e non ne e' un caso particolare: la similitudine
+     scala uguale in tutte le direzioni, quindi una riga che si accorcia
+     diventerebbe anche piu' sottile e la lettera cambierebbe peso mentre si
+     piega. Qui lo spessore non si tocca — si muove solo la lunghezza.
+     Resta affine, quindi manda rette in rette: e' tutto quello che serve
+     perche' le aste restino dritte e dure. */
   function motoBarra(A, B) {
-    var a0 = A[0], a1 = A[A.length - 1];
-    var b0 = B[0], b1 = B[B.length - 1];
+    var a = asse(A), b = asse(B);
 
-    var uax = a1[0] - a0[0], uay = a1[1] - a0[1];
-    var la = Math.hypot(uax, uay) || 1e-6;
-
-    /* Una barra non ha un verso: si prova anche col tratto d'arrivo percorso
-       al contrario e si tiene quello che ruota meno. Senza, l'asta della F —
-       scritta dall'alto in basso — contro quella della N — dal basso in alto —
-       fa fare mezzo giro a tutta la lettera. */
-    var scelte = [[b0, b1], [b1, b0]], best = null, i;
-    for (i = 0; i < 2; i++) {
-      var q0 = scelte[i][0], q1 = scelte[i][1];
-      var ubx = q1[0] - q0[0], uby = q1[1] - q0[1];
-      var lb = Math.hypot(ubx, uby) || 1e-6;
-      var ang = Math.atan2(uax * uby - uay * ubx, uax * ubx + uay * uby);
-      if (!best || Math.abs(ang) < Math.abs(best.ang)) best = { ang: ang, lb: lb };
-    }
-
-    function centro(P) {
-      var x = 0, y = 0, k;
-      for (k = 0; k < P.length; k++) { x += P[k][0]; y += P[k][1]; }
-      return [x / P.length, y / P.length];
-    }
-    var ca = centro(A), cb = centro(B);
+    /* Una riga non ha un verso: l'asta della F e' scritta dall'alto in basso e
+       quella della N dal basso in alto, ed e' la stessa retta. Si prende il
+       verso che ruota meno, altrimenti la lettera fa mezzo giro su se' stessa. */
+    var ang = Math.atan2(a.ux * b.uy - a.uy * b.ux, a.ux * b.ux + a.uy * b.uy);
+    if (ang >  Math.PI / 2) ang -= Math.PI;
+    if (ang < -Math.PI / 2) ang += Math.PI;
 
     return {
-      ax: ca[0], ay: ca[1],      /* perno di partenza                        */
-      bx: cb[0], by: cb[1],      /* perno d'arrivo                           */
-      ang: best.ang,             /* di quanto gira                           */
-      k: best.lb / la,           /* di quanto si allunga, sul proprio asse   */
-      ux: uax / la, uy: uay / la /* l'asse, nel sistema di partenza          */
+      ax: a.cx, ay: a.cy,        /* perno di partenza                        */
+      bx: b.cx, by: b.cy,        /* perno d'arrivo                           */
+      ang: ang,                  /* di quanto gira                           */
+      k: b.L / a.L,              /* di quanto si allunga, sul proprio asse   */
+      ux: a.ux, uy: a.uy         /* l'asse, nel sistema di partenza          */
     };
   }
 

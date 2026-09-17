@@ -286,11 +286,24 @@ lettera piegata. Le regioni si allargano l'una dentro l'altra di una casella:
 e' quella sovrapposizione che fa sparire il giunto, perche' una fessura bianca
 si vede peggio di una curva.
 
-**Le barre si pareggiano di numero.** La `R` ne ha tre, la `O` una: accoppiando
-per indice, i tre pezzi della `R` finivano ammucchiati sull'unica barra della `O`
-e una `O` non veniva fuori. Invece di scegliere quale pezzo sacrificare, si
-spezza in due la barra piu' lunga della lettera che ne ha meno, finche' i conti
-tornano — l'anello della `O` diventa tre archi, uno per ogni pezzo di `R`.
+**Non si spezza mai una riga.** Una lettera ha le righe che ha: la `H` ne ha
+tre, due verticali e una orizzontale. Pareggiare i conti col numero di righe
+dell'altra lettera spezzandone una in due significa aprire un'asta della `H` in
+due tronconi, e la lettera smette di essere una lettera.
+
+Quando i conti non tornano vale la stessa regola portata fino in fondo: una riga
+senza partner **si accorcia, fino a sparire**. Il trattino della `A` che diventa
+`T` ruota sull'asta della `T` e si accorcia a niente. Simmetricamente, una riga
+che nella lettera d'arrivo c'e' e in quella di partenza no **nasce allungandosi
+da zero**, e l'inchiostro che porta viene preso dalla lettera d'arrivo, perche'
+in quella di partenza non ce n'e'.
+
+**L'asse di una riga si prende dalla riga intera, non dai suoi due capi.** Su un
+anello chiuso — la `O`, la `Q` — primo e ultimo punto sono lo stesso punto:
+direzione nulla, lunghezza zero, e il fattore di allungamento diventa un numero
+assurdo. La `O` non si piegava, esplodeva. Si usa la direzione principale di
+tutti i punti: su una barra dritta coincide con quella dei capi, su un anello
+esiste comunque, su un arco e' quella giusta.
 
 In coda si passa alla lettera d'arrivo vera (`consegnaBarre`): l'assemblaggio la
 sfiora ma non la centra, perche' porta le grazie della lettera di partenza.

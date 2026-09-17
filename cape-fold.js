@@ -249,6 +249,19 @@
     return out;
   }
 
+  /* Un punto sta dentro un anello? Raggio orizzontale, conteggio pari-dispari
+     degli attraversamenti. Serve solo a capire chi contiene chi. */
+  function contiene(anello, punto) {
+    var dentro = false, n = anello.length, i, j;
+    for (i = 0, j = n - 1; i < n; j = i++) {
+      var xi = anello[i][0], yi = anello[i][1];
+      var xj = anello[j][0], yj = anello[j][1];
+      if (((yi > punto[1]) !== (yj > punto[1])) &&
+          (punto[0] < (xj - xi) * (punto[1] - yi) / ((yj - yi) || 1e-12) + xi)) dentro = !dentro;
+    }
+    return dentro;
+  }
+
   function areaFirmata(p) {
     var a = 0, n = p.length, i, j;
     for (i = 0, j = n - 1; i < n; j = i++) a += p[j][0] * p[i][1] - p[i][0] * p[j][1];
@@ -423,11 +436,32 @@
           if (Y < miny) miny = Y; if (Y > maxy) maxy = Y;
           return [X, Y];
         });
-        if (areaFirmata(conv) < 0) conv.reverse();   /* tutti nello stesso verso */
         /* Il pulviscolo: anelli da pochi punti e area quasi nulla, che la
            soglia bassa raccoglie sui bordi antialiasati. Non sono parti
            della lettera e in fusione diventerebbero schegge nere. */
         if (Math.abs(areaFirmata(conv)) >= C.minArea) res.anelli.push(conv);
+      });
+
+      /* Il VERSO di percorrenza di ogni anello, deciso da quanti altri
+         anelli lo contengono: pari = pieno, dispari = buco. Il buco si
+         percorre al contrario del pieno che lo circonda.
+
+         Questo verso e' quello che permette di riempire col criterio
+         NON-ZERO invece che pari-dispari, ed e' la differenza fra una
+         lettera un po' gonfia e una macchia nera. Col pari-dispari, un
+         contorno che a meta' piega si ripiega su se' stesso si buca da solo
+         nel punto del ripiegamento: la regione coperta due volte conta come
+         "fuori". Col non-zero, due giri nello stesso verso restano dentro, e
+         un ripiegamento e' solo una sovrapposizione — si vede un ingrossamento
+         al posto di un buco. */
+      res.anelli.forEach(function (an, k) {
+        var dentro = 0;
+        res.anelli.forEach(function (altro, h) {
+          if (h !== k && contiene(altro, an[0])) dentro++;
+        });
+        var buco = (dentro % 2) === 1;
+        var a = areaFirmata(an);
+        if ((a < 0) !== buco) an.reverse();
       });
       res.box = { x: minx, y: miny, w: maxx - minx, h: maxy - miny };
       res.anelli.sort(function (a, b) {
@@ -1025,7 +1059,9 @@
       });
     });
 
-    ctx.fill("evenodd");
+    /* NON-ZERO, non pari-dispari: vedi il commento sul verso degli anelli
+       in traccia(). E' li' che sta il motivo. */
+    ctx.fill();
   }
 
   function traccia1(ctx, pts, mappa) {

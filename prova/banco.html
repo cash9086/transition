@@ -27,8 +27,14 @@
   try{ await document.fonts.load('400 200px "Bodoni Moda"'); }catch(e){}
   try{ await document.fonts.ready; }catch(e){}
 
-  const DA = { testo:'ART & FASHION', famiglia:'Cormorant',     peso:300, spaziatura:0.02 };
-  const A  = { testo:'VOID AND MARK', famiglia:'"Bodoni Moda"', peso:400, spaziatura:-0.035 };
+  /* I due caratteri si cambiano dall'indirizzo: la domanda "quanto pesa il
+     fatto che siano diversi" va potuta rifare in un secondo.
+       ?a=Cormorant&pesoA=300   -> stesso carattere da entrambe le parti      */
+  const Q = new URLSearchParams(location.search);
+  const DA = { testo:'ART & FASHION', famiglia:Q.get('da')||'Cormorant',
+               peso:+(Q.get('pesoDa')||300), spaziatura:0.02 };
+  const A  = { testo:'VOID AND MARK', famiglia:Q.get('a')||'"Bodoni Moda"',
+               peso:+(Q.get('pesoA')||400), spaziatura:-0.035 };
 
   /* Se un font non c'e', il banco lo dice invece di disegnare con un
      ripiego e lasciarmi giudicare sagome sbagliate. */
@@ -71,11 +77,32 @@
     ctx.fillStyle='#252a22';
   });
 
+  /* Quanto inchiostro c'e' in ogni fotogramma, normalizzato sul quadrato del
+     corpo. Se questo numero cresce lungo la corsa, le lettere si stanno
+     ingrassando; se resta piatto, il difetto e' solo ripiegamento. E' una
+     domanda che a occhio non si risponde: un fotogramma disegnato piu'
+     piccolo sembra piu' pesante anche quando non lo e'. */
+  const inchiostro = PASSI.map(p=>{
+    const c2 = document.createElement('canvas');
+    c2.width = W; c2.height = RIGA;
+    const g2 = c2.getContext('2d', {willReadFrequently:true});
+    g2.fillStyle='#fff'; g2.fillRect(0,0,W,RIGA);
+    const corpo = CORPO_DA + (CORPO_A-CORPO_DA)*mod.ease(p);
+    capeFold.disegna(g2, mod, p, {
+      da:{ x:(W-largDa)/2, y:RIGA*0.62, corpo:CORPO_DA },
+      a: { x:84,           y:RIGA*0.62, corpo:CORPO_A  }
+    });
+    const px = g2.getImageData(0,0,W,RIGA).data;
+    let scuri=0;
+    for(let i=0;i<px.length;i+=4) if(px[i]<128) scuri++;
+    return { p, area: +(scuri/(corpo*corpo)).toFixed(2) };
+  });
+
   const conta = mod.posti.reduce((a,p)=>{a[p.tipo]=(a[p.tipo]||0)+1;return a;},{});
   eti.textContent = 'costruzione '+tCostr.toFixed(0)+'ms · disegno '
     +(tDis/PASSI.length).toFixed(2)+'ms/frame · '+JSON.stringify(conta);
   window.__pronto = true;
-  window.__diag = { fontOk, tCostr, tFrame:tDis/PASSI.length, conta,
+  window.__diag = { fontOk, inchiostro, tCostr, tFrame:tDis/PASSI.length, conta,
     punti: mod.posti.reduce((a,p)=>a+p.anelli.reduce((b,an)=>b+(an.src?an.src.length:an.sola.length),0),0) };
 })();
 </script>

@@ -27,9 +27,17 @@
   const PASSI  = [0, 0.25, 0.5, 0.75, 1];
   const CELLA = 250, CORPO = 170;
 
+  /* I due caratteri si possono cambiare dall'indirizzo, perche' la domanda
+     "quanto pesa il fatto che siano DIVERSI" e' quella che conta di piu' e
+     va potuta rifare in un secondo:
+       ?da=Cormorant&pesoDa=300&a="Bodoni Moda"&pesoA=400   (diversi)
+       ?da=Cormorant&pesoDa=300&a=Cormorant&pesoA=300       (uguali)        */
+  const Q = new URLSearchParams(location.search);
   const mod = capeFold.costruisci({
-    da:{testo:'ART & FASHION', famiglia:'Cormorant', peso:300, spaziatura:0.02},
-    a: {testo:'VOID AND MARK', famiglia:'"Bodoni Moda"', peso:400, spaziatura:-0.035}
+    da:{testo:'ART & FASHION', famiglia:Q.get('da')||'Cormorant',
+        peso:+(Q.get('pesoDa')||300), spaziatura:0.02},
+    a: {testo:'VOID AND MARK', famiglia:Q.get('a')||'"Bodoni Moda"',
+        peso:+(Q.get('pesoA')||400), spaziatura:-0.035}
   });
 
   const cnv=document.getElementById('c'), ctx=cnv.getContext('2d');

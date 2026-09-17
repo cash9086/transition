@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>cape-fold — banco</title>
+<style>
+  /* I font stanno su disco apposta: il banco non deve dipendere dalla rete,
+     altrimenti una richiesta andata male fa ripiegare su un font di sistema
+     e si finisce a giudicare la piega su sagome che non sono quelle vere. */
+  @font-face{font-family:'Bodoni Moda';font-weight:400;src:url(font/bodoni.woff2) format('woff2');font-display:block}
+  @font-face{font-family:'Cormorant';font-weight:300;src:url(font/cormorant.woff2) format('woff2');font-display:block}
+  html,body{margin:0;background:#fbfaf7;font-family:system-ui,sans-serif}
+  #strip{display:block}
+  .eti{position:fixed;left:8px;top:8px;font:12px/1.4 monospace;color:#900;z-index:9}
+</style>
+</head>
+<body>
+<div class="eti" id="eti">…</div>
+<canvas id="strip"></canvas>
+<script src="../cape-fold.js"></script>
+<script>
+/* Il banco non e' il modulo: e' solo un supporto per guardare i fotogrammi.
+   Disegna la stessa piega a progressioni diverse, una sotto l'altra. */
+(async function(){
+  const eti = document.getElementById('eti');
+  try{ await document.fonts.load('300 200px Cormorant'); }catch(e){}
+  try{ await document.fonts.load('400 200px "Bodoni Moda"'); }catch(e){}
+  try{ await document.fonts.ready; }catch(e){}
+
+  const DA = { testo:'ART & FASHION', famiglia:'Cormorant',     peso:300, spaziatura:0.02 };
+  const A  = { testo:'VOID AND MARK', famiglia:'"Bodoni Moda"', peso:400, spaziatura:-0.035 };
+
+  /* Se un font non c'e', il banco lo dice invece di disegnare con un
+     ripiego e lasciarmi giudicare sagome sbagliate. */
+  const fontOk = { cormorant: document.fonts.check('300 200px Cormorant'),
+                   bodoni:    document.fonts.check('400 200px "Bodoni Moda"') };
+
+  const t0 = performance.now();
+  const mod = capeFold.costruisci({ da:DA, a:A });
+  const tCostr = performance.now()-t0;
+
+  const W = 1440, RIGA = 175, PASSI = [0,0.2,0.3,0.4,0.5,0.6,0.7,0.85,1];
+  const cnv = document.getElementById('strip');
+  const dpr = 2;
+  cnv.width = W*dpr; cnv.height = RIGA*PASSI.length*dpr;
+  cnv.style.width = W+'px'; cnv.style.height = (RIGA*PASSI.length)+'px';
+  const ctx = cnv.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.fillStyle='#fbfaf7'; ctx.fillRect(0,0,W,RIGA*PASSI.length);
+
+  /* Geometria finta ma realistica: partenza gigante e centrata, arrivo
+     piccolo e a sinistra, come l'hai chiesto. */
+  const CORPO_DA = 132, CORPO_A = 46;
+  const largDa = mod.largDa*CORPO_DA, largA = mod.largA*CORPO_A;
+
+  let tDis = 0;
+  PASSI.forEach((p,k)=>{
+    const yBase = RIGA*k + RIGA*0.62;
+    ctx.save();
+    ctx.translate(0, RIGA*k);
+    const geo = {
+      da:{ x:(W-largDa)/2, y:RIGA*0.62, corpo:CORPO_DA },
+      a: { x:84,           y:RIGA*0.62, corpo:CORPO_A  }
+    };
+    const s = performance.now();
+    capeFold.disegna(ctx, mod, p, geo);
+    tDis += performance.now()-s;
+    ctx.restore();
+    ctx.fillStyle='#b00'; ctx.font='11px monospace';
+    ctx.fillText('p='+p.toFixed(2), 8, RIGA*k+14);
+    ctx.fillStyle='#252a22';
+  });
+
+  const conta = mod.posti.reduce((a,p)=>{a[p.tipo]=(a[p.tipo]||0)+1;return a;},{});
+  eti.textContent = 'costruzione '+tCostr.toFixed(0)+'ms · disegno '
+    +(tDis/PASSI.length).toFixed(2)+'ms/frame · '+JSON.stringify(conta);
+  window.__pronto = true;
+  window.__diag = { fontOk, tCostr, tFrame:tDis/PASSI.length, conta,
+    punti: mod.posti.reduce((a,p)=>a+p.anelli.reduce((b,an)=>b+(an.src?an.src.length:an.sola.length),0),0) };
+})();
+</script>
+</body>
+</html>

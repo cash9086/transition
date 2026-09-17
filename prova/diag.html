@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8">
+<style>
+@font-face{font-family:'Bodoni Moda';font-weight:400;src:url(font/bodoni.woff2) format('woff2');font-display:block}
+@font-face{font-family:'Cormorant';font-weight:300;src:url(font/cormorant.woff2) format('woff2');font-display:block}
+</style>
+<script src="../cape-fold.js"></script>
+<script>
+(async function(){
+  await document.fonts.load('300 200px Cormorant');
+  await document.fonts.load('400 200px "Bodoni Moda"');
+  await document.fonts.ready;
+  const mod = capeFold.costruisci({
+    da:{testo:'ART & FASHION', famiglia:'Cormorant', peso:300, spaziatura:0.02},
+    a: {testo:'VOID AND MARK', famiglia:'"Bodoni Moda"', peso:400, spaziatura:-0.035}
+  });
+  const curva = [];
+  for(let p=0;p<=1.0001;p+=0.05) curva.push(+mod.ease(p).toFixed(3));
+
+  /* per ogni posto: angoli di rotazione dei tratti, in gradi, e scale */
+  const tratti = mod.posti.map((po,i)=>{
+    if(po.tipo!=='piega') return {i, ch:po.chDa+'>'+po.chA, tipo:po.tipo};
+    return {i, ch:po.chDa+'>'+po.chA,
+      ang: po.tratti.map(t=>Math.round(t.mot.ang*180/Math.PI)),
+      sc:  po.tratti.map(t=>+t.mot.sc.toFixed(2)),
+      res: po.tratti.map(t=>+Math.max(...t.mot.res.map(r=>Math.hypot(r[0],r[1]))).toFixed(3)),
+      anelli: po.anelli.length };
+  });
+  window.__diag = {curva, tratti};
+  window.__pronto = true;
+})();
+</script>

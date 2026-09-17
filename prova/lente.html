@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>cape-fold — lente sui contorni</title>
+<style>
+  @font-face{font-family:'Bodoni Moda';font-weight:400;src:url(font/bodoni.woff2) format('woff2');font-display:block}
+  @font-face{font-family:'Cormorant';font-weight:300;src:url(font/cormorant.woff2) format('woff2');font-display:block}
+  html,body{margin:0;background:#fff;font-family:monospace}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="../cape-fold.js"></script>
+<script>
+/* Per ogni lettera: a sinistra il testo vero in grigio, sopra il contorno
+   tracciato in rosso (prima del ricampionamento) e in blu dopo. Se il rosso
+   non ricalca il grigio, sbaglia il tracciamento. Se il rosso e' giusto e il
+   blu no, sbaglia il ricampionamento. */
+(async function(){
+  await document.fonts.load('300 200px Cormorant');
+  await document.fonts.load('400 200px "Bodoni Moda"');
+  await document.fonts.ready;
+
+  const LETTERE = ['V','O','I','D','A','N','M','R','K','H','S'];
+  const FAMIGLIA = '"Bodoni Moda"', PESO = 400;
+  const CELLA = 240, COL = 6, S = 220;
+  const cnv = document.getElementById('c'), ctx = cnv.getContext('2d');
+  const righe = Math.ceil(LETTERE.length/COL);
+  cnv.width = CELLA*COL; cnv.height = CELLA*righe;
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,cnv.width,cnv.height);
+
+  const rapporto = 0.6;   /* rimpicciolisco per farcele stare */
+  const diag = [];
+
+  LETTERE.forEach((ch,i)=>{
+    const ox = (i%COL)*CELLA + 30, oy = Math.floor(i/COL)*CELLA + CELLA*0.78;
+    const tr = capeFold._core.traccia(ch, FAMIGLIA, PESO);
+
+    /* il vero */
+    ctx.save();
+    ctx.fillStyle='#ccc';
+    ctx.font = '400 '+(S*rapporto)+'px "Bodoni Moda"';
+    ctx.textBaseline='alphabetic';
+    ctx.fillText(ch, ox, oy);
+    ctx.restore();
+
+    /* i contorni grezzi */
+    ctx.strokeStyle='#d00'; ctx.lineWidth=1;
+    tr.anelli.forEach(an=>{
+      ctx.beginPath();
+      an.forEach((p,k)=>{
+        const x = ox + p[0]*S*rapporto, y = oy + p[1]*S*rapporto;
+        k ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+      });
+      ctx.closePath(); ctx.stroke();
+    });
+
+    /* i contorni ricampionati */
+    ctx.strokeStyle='rgba(0,80,255,.85)'; ctx.lineWidth=1;
+    const camp = tr.anelli.map(an=>{
+      const L = an.reduce((a,p,k)=> k? a+Math.hypot(p[0]-an[k-1][0],p[1]-an[k-1][1]) : 0, 0);
+      const n = Math.max(28, Math.min(190, Math.round(L/0.014)));
+      return capeFold._core.campiona(an, n, true);
+    });
+    camp.forEach(an=>{
+      ctx.beginPath();
+      an.forEach((p,k)=>{
+        const x = ox + p[0]*S*rapporto, y = oy + p[1]*S*rapporto;
+        k ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+      });
+      ctx.closePath(); ctx.stroke();
+    });
+
+    ctx.fillStyle='#000'; ctx.font='11px monospace';
+    ctx.fillText(ch+'  anelli:'+tr.anelli.length+'  grezzi:'+tr.anelli.map(a=>a.length).join('/')
+      +'  camp:'+camp.map(a=>a.length).join('/'), (i%COL)*CELLA+6, Math.floor(i/COL)*CELLA+16);
+    diag.push({ch, anelli:tr.anelli.length, grezzi:tr.anelli.map(a=>a.length), box:tr.box});
+  });
+
+  window.__diag = diag;
+  window.__pronto = true;
+})();
+</script>
+</body>
+</html>

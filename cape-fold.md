@@ -176,37 +176,79 @@ sfaldata e non serve nemmeno guardarla.
 
 ---
 
-## Il difetto che resta, e il numero con cui misurarlo
+## Il difetto che resta, e come misurarlo senza sbagliare
 
 Nel terzo centrale della corsa alcune lettere si chiudono in macchie nere. La
-causa non e' piu' un'impressione: il contorno **si attraversa da solo**, e
-`prova/singola.html` lo conta. Dove un osso ruota di 90 gradi e quello accanto
-sta fermo, la fascia di lettera in mezzo si torce, il contorno si ripiega, e il
-riempimento pari-dispari chiude il ripiegamento in nero.
+causa non e' un'impressione: il contorno **si attraversa da solo**, e
+`prova/singola.html` lo conta disegnandolo a filo invece che riempito. Dove un
+osso ruota di 90 gradi e quello accanto sta fermo, la fascia di lettera in mezzo
+si torce e il contorno si ripiega.
 
 Le ossa, invece, fanno gia' la cosa giusta: nel disegno a filo si vede la `A`
 che ribalta le diagonali nella `V`, la `H` che piega le aste nella `V` centrale
-della `M`, la `F` che alza il braccio nella diagonale della `N`. Il problema e'
-solo la pelle che le segue.
+della `M`, la `F` che alza il braccio nella diagonale della `N`. Il difetto e'
+solo nella pelle che le segue.
 
-**Misurare prima di scegliere.** Sulle quattro coppie di prova
-(`A>V`, `R>O`, `H>M`, `F>N`, a cinque progressioni):
+### Due misure, e quale delle due conta
 
-| Variante | Auto-attraversamenti |
+**Auto-attraversamenti** (`prova/scatta-singola.js`), su `A>V`, `R>O`, `H>M`,
+`F>N` a cinque progressioni:
+
+| Variante | Incroci |
 |---|---|
-| allineamento sulle sagome ferme | 60 |
-| **allineamento dopo lo scheletro** | **40** |
+| allineamento dei contorni sulle sagome ferme | 60 |
+| **allineamento dopo che lo scheletro ha mosso la sagoma** | **40** |
 | media degli angoli invece che delle posizioni | 55 |
 
-La seconda riga e' quella in vigore. La terza sembrava la mossa da manuale —
-mediare le rotazioni in scala logaritmica invece delle posizioni ruotate — e coi
-perni degli ossi lontani fra loro sposta piu' di quanto raddrizzi. La prima, a
-occhio su un fotogramma, sembrava migliore della seconda: non lo era. Su questo
-difetto l'occhio sbaglia e il conteggio no.
-2. **L'aggancio alla pagina** non è scritto: il binario di scroll, lo sticky
-   della sezione, la consegna dal canvas dell'inchiostro all'SVG, la comparsa
-   della sezione al 100% e il pannello bianco che cade via dalle immagini.
-3. **Il blocco dell'autoplay** del carosello finché la piega non è finita
+**Inchiostro per fotogramma** (`prova/scatta.js`), area scura sul quadrato del
+corpo, rispetto a `p=0`:
+
+| | a meta' corsa | a fine corsa |
+|---|---|---|
+| due caratteri diversi (Cormorant 300 -> Bodoni 400) | **+53%** | +49% |
+| lo stesso carattere da entrambe le parti | **+11%** | -5% |
+
+Il secondo numero e' quello che decide come si legge la piega, e il primo no.
+Passando allo stesso carattere da entrambe le parti gli incroci restano quanti
+erano — 40 contro 41 — ma la fascia illeggibile si dimezza, da `p` 0.30-0.50 a
+0.30-0.40, e i fotogrammi a 0.50 e 0.60 diventano puliti. **Un ripiegamento
+dentro un filetto sottile e' una sovrapposizione che non si vede; lo stesso
+ripiegamento dentro un'asta grassa e' una macchia nera.** Contare i
+ripiegamenti misura quanti sono, non quanto costano.
+
+Per questo il sito usa `PP Editorial New` da entrambe le parti: non e' solo
+coerenza tipografica — toglie anche il cambio di carattere in volo, ed e' finora
+la cosa che ha migliorato di piu' il terzo centrale.
+
+I due banchi prendono i caratteri dall'indirizzo, cosi' la domanda si rifa' in
+un secondo:
+
+```
+node scatta.js                      # come sta il sito adesso
+node scatta-uguali.js               # con lo stesso carattere da entrambe le parti
+node scatta-confronto.js            # il conteggio degli incroci, tre configurazioni
+```
+
+### Vicoli ciechi, perche' non si rifacciano
+
+- **Riempimento non-zero con verso deciso per annidamento**, al posto del
+  pari-dispari: e' corretto e piu' robusto, quindi e' rimasto — ma sulle macchie
+  non ha cambiato niente. Non erano inversioni del criterio di riempimento.
+- **Media degli angoli** invece delle posizioni ruotate: e' la mossa da manuale
+  contro lo schiacciamento della pelle. Coi perni degli ossi lontani fra loro
+  sposta piu' di quanto raddrizzi, e il fotogramma e' identico.
+- **"Le lettere si ingrassano a meta' corsa"**: falso, misurato. Con due
+  caratteri diversi l'inchiostro sale in modo monotono dal peso di uno al peso
+  dell'altro, senza nessun gonfiore in mezzo. Guardando i fotogrammi sembrava
+  vero.
+
+## Cosa manca
+
+1. **La fascia `p` 0.30-0.40**, dove il contorno si ripiega ancora.
+2. **L'aggancio alla pagina** non e' scritto: il binario di scroll, lo sticky
+   della sezione, la consegna dal canvas dell'inchiostro, la comparsa della
+   sezione al 100% e il pannello bianco che cade via dalle immagini.
+3. **Il blocco dell'autoplay** del carosello finche' la piega non e' finita
    (richiede una modifica a `cape-studio-carousel.js`).
 4. Il titolo della prima opera va cambiato in `VOID AND MARK` nei dati del
    carosello.

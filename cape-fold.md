@@ -274,17 +274,35 @@ piega. Qui lo spessore non si tocca. Resta comunque una trasformazione affine,
 quindi manda rette in rette — ed e' tutto quello che serve perche' le aste
 restino dritte e dure.
 
-A ogni barra tocca una **regione** di lettera, non un pezzo di contorno. La
-differenza e' tutto: un pezzo di contorno va chiuso, e per chiuderlo si tira una
-corda che passa per il vuoto — gia' a `p=0` i controinterni si tappavano di
-nero. Una regione di piano non va chiusa, c'e' gia'.
+A ogni riga tocca la **sua fascia di inchiostro**: tutto cio' che sta entro una
+certa distanza dalla riga, grazie comprese. L'asta della `H` e' un oggetto solo.
 
-In disegno, per ogni barra: si porta il piano dove la barra lo manda, si ritaglia
-alla sua regione, e dentro quel ritaglio si disegna **la lettera intera**. Quello
-che resta e' la sua parte, spostata rigidamente. L'unione delle parti e' la
-lettera piegata. Le regioni si allargano l'una dentro l'altra di una casella:
-e' quella sovrapposizione che fa sparire il giunto, perche' una fessura bianca
-si vede peggio di una curva.
+La cosa che conta e' che le fasce **si sovrappongono**, e va bene cosi'. Dove la
+traversa incrocia l'asta, quell'inchiostro sta in tutte e due le fasce: viene
+disegnato due volte, in due posti, e l'unione non se ne accorge.
+
+E' la correzione di due errori in fila, tutti e due del tipo "taglio quello che
+non va tagliato":
+
+- **Spartire la superficie a griglia**, ogni pezzetto alla riga piu' vicina e a
+  una sola: il confine fra l'asta e la traversa passava DENTRO l'asta, e quando
+  la traversa ruotava si portava via un morso. I bordi sbrecciati non erano
+  righe piegate male — erano righe TAGLIATE. Duplicare l'inchiostro del giunto
+  invece di spartirlo toglie il problema per costruzione: non c'e' nessun taglio,
+  quindi non c'e' niente che possa spezzarsi.
+- **Un rettangolo orientato** come fascia: va bene su un'asta dritta, non
+  sull'anello della `O`, che perdeva i fianchi perche' il rettangolo ne prendeva
+  una striscia orizzontale e buttava il resto. La fascia deve SEGUIRE la riga:
+  una stecca su un'asta, una ciambella su una `O`.
+
+Ne' la lettera ne' la fascia cambiano mai, quindi la loro intersezione si calcola
+all'avvio e si tiene come **tessera**. A ogni fotogramma resta da appoggiare la
+tessera dove la riga la manda. `larghezzaFascia` regola quanto la fascia e' piu'
+larga dell'asta: misurato, 1.3 perde le grazie (l'inchiostro a meta' corsa scende
+al 76%), 1.9 duplica troppo (116%), 1.6 sta fra il 92% e il 108%.
+
+Ai due estremi si disegna la lettera vera in vettoriale: le tessere sono
+immagini e da ferme si vedrebbe la loro grana. In movimento no.
 
 **Non si spezza mai una riga.** Una lettera ha le righe che ha: la `H` ne ha
 tre, due verticali e una orizzontale. Pareggiare i conti col numero di righe

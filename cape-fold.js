@@ -91,10 +91,21 @@
        chiude tutto in una macchia nera. */
     scalaOsso: [0.82, 1.22],
 
-    /* Quanto e' fitta la griglia su cui si spartisce la superficie della
-       lettera fra le barre. Piu' fitta = confini piu' netti e costruzione piu'
-       lenta. Sotto 16 i confini si vedono a scaletta. */
-    griglia: 34,
+    /* Quanto la fascia di una riga e' piu' larga dello spessore dell'asta, e
+       di quanto sborda oltre i due capi per prendersi le grazie. Larghi, le
+       righe si portano dietro pezzi delle vicine — che non e' un guasto,
+       perche' l'inchiostro duplicato sparisce nell'unione, ma e' peso inutile.
+       Stretti, una grazia resta indietro e si stacca dalla sua asta. */
+    /* Quanto la fascia di una riga e' piu' larga dello spessore dell'asta.
+       Larga, la riga si porta dietro pezzi delle vicine — e non e' un guasto,
+       perche' l'inchiostro duplicato sparisce nell'unione — ma e' materiale
+       che vola. Stretta, una grazia resta indietro e si stacca dalla sua asta. */
+    larghezzaFascia: 1.6,
+
+    /* Quanti pixel per em vale una tessera. Le tessere si disegnano una volta
+       all'avvio e poi si spostano soltanto, quindi conta solo che siano
+       abbastanza fitte da reggere il corpo piu' grande a cui le si vedra'. */
+    tessera: 420,
 
     /* Oltre questa progressione si disegna la lettera d'arrivo VERA invece
        dell'assemblaggio delle barre. Le due non coincidono mai del tutto — un
@@ -666,67 +677,94 @@
     }
   }
 
-  /* ——— la spartizione della SUPERFICIE ————————————————————————————
-     A ogni barra tocca la parte di lettera che le sta piu' vicino. Non un
-     pezzo di CONTORNO — un pezzo di SUPERFICIE: e' la differenza fra un taglio
-     che funziona e uno che tappa i controinterni di nero. Un pezzo di contorno
-     va chiuso, e per chiuderlo si tira una corda che passa per il vuoto; una
-     regione di piano non va chiusa, c'e' gia'.
+  /* ——— la fascia di una riga ——————————————————————————————————————
+     A ogni riga tocca la SUA fascia di inchiostro: un rettangolo orientato
+     come la riga, lungo quanto la riga piu' le sue grazie, e largo quanto
+     l'asta e' spessa. L'asta della H, grazie comprese, e' un oggetto solo.
 
-     La regione si costruisce su una griglia grossolana e si tiene come lista
-     di rettangoli, uniti per righe. In disegno diventa un ritaglio, e dentro
-     quel ritaglio si disegna la lettera INTERA: il risultato e' la lettera
-     intersecata la regione, trasformata dalla barra. L'unione su tutte le
-     barre e' l'assemblaggio.
+     La cosa importante e' che le fasce SI SOVRAPPONGONO, e va bene cosi'.
+     Nel punto in cui la traversa incrocia l'asta, quell'inchiostro sta in
+     tutte e due le fasce: viene disegnato due volte, in due posti diversi,
+     e l'unione non se ne accorge.
 
-     Le regioni si allargano l'una dentro l'altra di una casella: e' quella
-     sovrapposizione che fa sparire il giunto. Senza, due barre che ruotano
-     diversamente aprono una fessura bianca sul confine — e una fessura si vede
-     peggio di una curva. */
-  function regioni(tratti, box, celle) {
-    var passo = Math.max(box.w, box.h) / celle;
-    if (!(passo > 0)) passo = 0.05;
-    var x0 = box.x - passo * 2, y0 = box.y - passo * 2;
-    var nx = Math.ceil((box.w + passo * 4) / passo);
-    var ny = Math.ceil((box.h + passo * 4) / passo);
-    var T = tratti.length, out = [], j, ix, iy;
+     Prima spartivo la superficie a griglia, ogni pezzetto alla riga piu'
+     vicina — e un pezzetto solo a una riga. Quindi il confine fra l'asta e la
+     traversa passava DENTRO l'asta, e quando la traversa ruotava si portava
+     via un morso di asta. Erano quelli i bordi sbrecciati: non righe che si
+     piegano male, righe TAGLIATE. Duplicare l'inchiostro del giunto invece
+     di spartirlo toglie il problema per costruzione: non c'e' nessun taglio
+     da nessuna parte, quindi non c'e' niente che si possa spezzare. */
 
-    /* Per ogni casella, la distanza da ogni barra: si calcola una volta. */
-    var dist = [];
-    for (iy = 0; iy < ny; iy++) {
-      for (ix = 0; ix < nx; ix++) {
-        var c = [x0 + (ix + 0.5) * passo, y0 + (iy + 0.5) * passo];
-        var riga = new Float64Array(T), min = Infinity;
-        for (j = 0; j < T; j++) {
-          riga[j] = distanzaDaTratto(c, tratti[j].A);
-          if (riga[j] < min) min = riga[j];
-        }
-        dist.push({ d: riga, min: min });
-      }
-    }
-
-    for (j = 0; j < T; j++) {
-      var rett = [];
-      for (iy = 0; iy < ny; iy++) {
-        var da = -1;
-        for (ix = 0; ix <= nx; ix++) {
-          var dentro = false;
-          if (ix < nx) {
-            var cel = dist[iy * nx + ix];
-            /* la casella e' di questa barra, o le sta abbastanza vicino da
-               dover essere condivisa: e' qui che nasce la sovrapposizione */
-            dentro = cel.d[j] <= cel.min + passo * 1.2;
-          }
-          if (dentro && da < 0) da = ix;
-          else if (!dentro && da >= 0) {
-            rett.push([x0 + da * passo, y0 + iy * passo, (ix - da) * passo, passo]);
-            da = -1;
-          }
+  /* Quanto e' spessa l'asta lungo questa riga: la massima distanza fra un
+     punto della riga e il contorno piu' vicino, raddoppiata. E' il raggio
+     dell'inchiostro che la riga si porta addosso. */
+  function spessoreRiga(riga, anelli) {
+    var max = 0, i, k, a, q;
+    for (i = 0; i < riga.length; i++) {
+      var d2min = Infinity;
+      for (a = 0; a < anelli.length; a++) {
+        var an = anelli[a];
+        for (k = 0; k < an.length; k += 3) {
+          q = an[k];
+          var dx = q[0] - riga[i][0], dy = q[1] - riga[i][1];
+          var d2 = dx * dx + dy * dy;
+          if (d2 < d2min) d2min = d2;
         }
       }
-      out.push(rett);
+      var d = Math.sqrt(d2min);
+      if (d > max) max = d;
     }
-    return out;
+    return max * 2;
+  }
+
+  /* L'inchiostro che una riga si porta addosso, calcolato una volta sola.
+
+     La fascia non e' un rettangolo: SEGUE la riga. Su un'asta dritta e' una
+     stecca, sull'anello della O e' una ciambella. Con un rettangolo orientato
+     la O perdeva i fianchi — il rettangolo ne prendeva una striscia
+     orizzontale e buttava il resto.
+
+     Siccome ne' la lettera ne' la fascia cambiano mai, la loro intersezione si
+     calcola all'avvio e si tiene come tessera. A ogni fotogramma resta da
+     appoggiare la tessera dove la riga la manda: un disegno di immagine, non
+     un ritaglio da rifare. */
+  function tessera(riga, anelli, box) {
+    var raggio = spessoreRiga(riga, anelli) / 2 * C.larghezzaFascia;
+    var margine = raggio + 0.06;
+    var S = C.tessera;
+    var x0 = box.x - margine, y0 = box.y - margine;
+    var w = box.w + margine * 2, h = box.h + margine * 2;
+
+    var cnv = document.createElement("canvas");
+    cnv.width = Math.max(4, Math.ceil(w * S));
+    cnv.height = Math.max(4, Math.ceil(h * S));
+    var g = cnv.getContext("2d");
+    g.setTransform(S, 0, 0, S, -x0 * S, -y0 * S);
+
+    /* prima la lettera intera */
+    g.fillStyle = C.coloreDa;
+    g.beginPath();
+    anelli.forEach(function (an) {
+      var k;
+      g.moveTo(an[0][0], an[0][1]);
+      for (k = 1; k < an.length; k++) g.lineTo(an[k][0], an[k][1]);
+      g.closePath();
+    });
+    g.fill();
+
+    /* poi si tiene solo quello che sta entro raggio dalla riga: una passata
+       larga lungo la riga, in modalita' "tieni solo l'intersezione" */
+    g.globalCompositeOperation = "destination-in";
+    g.strokeStyle = C.coloreDa;
+    g.lineWidth = raggio * 2;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.beginPath();
+    g.moveTo(riga[0][0], riga[0][1]);
+    for (var k2 = 1; k2 < riga.length; k2++) g.lineTo(riga[k2][0], riga[k2][1]);
+    g.stroke();
+
+    return { cnv: cnv, x: x0, y: y0, w: w, h: h };
   }
 
   /* ——— quando i conti non tornano ————————————————————————————————
@@ -1064,11 +1102,8 @@
 
       /* La superficie di ciascuna lettera spartita fra le sue righe. In
          disegno la lettera intera si ritaglia con la regione della riga. */
-      posto.regioni = regioni(posto.tratti, tDa.box, C.griglia);
-      if (posto.nate.length) {
-        var barreA = skA.map(function (r) { return { A: r }; });
-        posto.regioniA = regioni(barreA, tA.box, C.griglia);
-      }
+      posto.tratti.forEach(function (tr) { tr.tess = tessera(tr.A, tDa.anelli, tDa.box); });
+      posto.nate.forEach(function (nb) { nb.tess = tessera(skA[nb.indice], tA.anelli, tA.box); });
       posto.sagomaDa = tDa.anelli;
       posto.sagomaA  = tA.anelli;
 
@@ -1143,8 +1178,20 @@
         return;
       }
 
-      /* In coda si passa alla lettera d'arrivo vera: l'assemblaggio la
-         sfiora ma non la centra, e l'ultimo fotogramma dev'essere esatto. */
+      /* Ai due estremi si disegna la lettera VERA, in vettoriale: le tessere
+         sono immagini e a fermo si vedrebbe la loro grana. In movimento no.
+         In coda serve anche perche' l'assemblaggio sfiora la lettera d'arrivo
+         ma non la centra. */
+      if (e <= 1 - C.consegnaBarre) {
+        ctx.beginPath();
+        po.sagomaDa.forEach(function (an) {
+          traccia1(ctx, an, function (pt) {
+            return [ox + pt[0] * corpo, oy + pt[1] * corpo];
+          });
+        });
+        ctx.fill();
+        return;
+      }
       if (e >= C.consegnaBarre) {
         ctx.beginPath();
         po.sagomaA.forEach(function (an) {
@@ -1166,7 +1213,7 @@
          e' il motivo per cui i controinterni restano buchi. Ritagliare un
          pezzo di CONTORNO e richiuderlo obbligherebbe a tirare una corda
          attraverso il vuoto, e il vuoto si riempirebbe di nero. */
-      po.tratti.forEach(function (tr, j) {
+      po.tratti.forEach(function (tr) {
         var m = tr.mot;
         var kk = 1 + (m.k - 1) * e;
         var d = kk - 1;
@@ -1183,15 +1230,7 @@
                       d * m.ux * m.uy,     1 + d * m.uy * m.uy, 0, 0);
         ctx.translate(-m.ax, -m.ay);
 
-        ctx.beginPath();
-        po.regioni[j].forEach(function (r) { ctx.rect(r[0], r[1], r[2], r[3]); });
-        ctx.clip();
-
-        ctx.beginPath();
-        po.sagomaDa.forEach(function (an) {
-          traccia1(ctx, an, function (pt) { return pt; });
-        });
-        ctx.fill();
+        ctx.drawImage(tr.tess.cnv, tr.tess.x, tr.tess.y, tr.tess.w, tr.tess.h);
         ctx.restore();
       });
 
@@ -1213,15 +1252,7 @@
                       db * m2.ux * m2.uy,     1 + db * m2.uy * m2.uy, 0, 0);
         ctx.translate(-m2.ax, -m2.ay);
 
-        ctx.beginPath();
-        po.regioniA[nb.indice].forEach(function (r) { ctx.rect(r[0], r[1], r[2], r[3]); });
-        ctx.clip();
-
-        ctx.beginPath();
-        po.sagomaA.forEach(function (an) {
-          traccia1(ctx, an, function (pt) { return pt; });
-        });
-        ctx.fill();
+        ctx.drawImage(nb.tess.cnv, nb.tess.x, nb.tess.y, nb.tess.w, nb.tess.h);
         ctx.restore();
       });
     });

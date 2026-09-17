@@ -96,11 +96,18 @@
        righe si portano dietro pezzi delle vicine — che non e' un guasto,
        perche' l'inchiostro duplicato sparisce nell'unione, ma e' peso inutile.
        Stretti, una grazia resta indietro e si stacca dalla sua asta. */
-    /* Quanto la fascia di una riga e' piu' larga dello spessore dell'asta.
-       Larga, la riga si porta dietro pezzi delle vicine — e non e' un guasto,
-       perche' l'inchiostro duplicato sparisce nell'unione — ma e' materiale
-       che vola. Stretta, una grazia resta indietro e si stacca dalla sua asta. */
-    larghezzaFascia: 1.6,
+    /* Di quanto si allarga la competenza di una riga oltre il suo confine,
+       in em. E' il margine che fa sovrapporre le competenze ai giunti: deve
+       valere almeno mezzo spessore d'asta, altrimenti sul confine resta un
+       taglio. Largo, ogni riga si porta dietro pezzi delle vicine — non e' un
+       guasto, l'inchiostro duplicato sparisce nell'unione, ma e' materiale che
+       vola in mezzo alla piega. */
+    margineCella: 0.05,
+
+    /* Quanto e' fitta la griglia su cui si decide la competenza. Il confine
+       fra due competenze cade dentro l'inchiostro duplicato, quindi la sua
+       scalettatura non si vede — ma sotto 30 comincia a vedersi. */
+    griglia: 56,
 
     /* Quanti pixel per em vale una tessera. Le tessere si disegnano una volta
        all'avvio e poi si spostano soltanto, quindi conta solo che siano
@@ -728,12 +735,31 @@
      calcola all'avvio e si tiene come tessera. A ogni fotogramma resta da
      appoggiare la tessera dove la riga la manda: un disegno di immagine, non
      un ritaglio da rifare. */
-  function tessera(riga, anelli, box) {
-    var raggio = spessoreRiga(riga, anelli) / 2 * C.larghezzaFascia;
-    var margine = raggio + 0.06;
-    var S = C.tessera;
-    var x0 = box.x - margine, y0 = box.y - margine;
-    var w = box.w + margine * 2, h = box.h + margine * 2;
+  function tessera(indice, righe, anelli, box) {
+    /* La competenza di una riga e' la parte di lettera che le sta piu' vicino
+       che a ogni altra riga: contiene la grazia per quanto lontana sporga,
+       perche' la grazia di un'asta e' comunque piu' vicina alla sua asta che
+       alla traversa. Poi la si ALLARGA di un margine: cosi' ai giunti, dove
+       due righe sono quasi equidistanti, la stessa macchia d'inchiostro
+       finisce nella competenza di tutte e due, e viene disegnata due volte —
+       una per riga — invece di essere assegnata a una sola e tagliata via
+       all'altra.
+
+       Le due strade prese prima avevano ciascuna un difetto opposto, ed e'
+       per questo che vanno tenute insieme:
+       - spartire e basta, ogni pezzetto a una sola riga: il confine passa
+         dentro l'asta e la traversa ruotando se ne porta via un morso;
+       - una fascia a distanza fissa dalla riga: il raggio esce dallo spessore
+         dell'asta, ma la grazia sporge molto piu' in la' e resta fuori. Le
+         aste finivano con un taglio netto al posto della grazia, e l'anello
+         della O si spezzava in archi.
+       Competenza (prende la grazia) piu' margine (copre il giunto) non taglia
+       piu' niente da nessuna parte. */
+    var S = C.tessera, passo = Math.max(box.w, box.h) / C.griglia;
+    if (!(passo > 0)) passo = 0.02;
+    var margine = C.margineCella + passo;
+    var x0 = box.x - margine * 2, y0 = box.y - margine * 2;
+    var w = box.w + margine * 4, h = box.h + margine * 4;
 
     var cnv = document.createElement("canvas");
     cnv.width = Math.max(4, Math.ceil(w * S));
@@ -741,7 +767,6 @@
     var g = cnv.getContext("2d");
     g.setTransform(S, 0, 0, S, -x0 * S, -y0 * S);
 
-    /* prima la lettera intera */
     g.fillStyle = C.coloreDa;
     g.beginPath();
     anelli.forEach(function (an) {
@@ -752,17 +777,33 @@
     });
     g.fill();
 
-    /* poi si tiene solo quello che sta entro raggio dalla riga: una passata
-       larga lungo la riga, in modalita' "tieni solo l'intersezione" */
+    /* la maschera: le caselle di competenza, allargate */
     g.globalCompositeOperation = "destination-in";
-    g.strokeStyle = C.coloreDa;
-    g.lineWidth = raggio * 2;
-    g.lineCap = "round";
-    g.lineJoin = "round";
+    g.fillStyle = "#000";
     g.beginPath();
-    g.moveTo(riga[0][0], riga[0][1]);
-    for (var k2 = 1; k2 < riga.length; k2++) g.lineTo(riga[k2][0], riga[k2][1]);
-    g.stroke();
+    var nx = Math.ceil(w / passo), ny = Math.ceil(h / passo), ix, iy, r;
+    for (iy = 0; iy < ny; iy++) {
+      var da = -1;
+      for (ix = 0; ix <= nx; ix++) {
+        var dentro = false;
+        if (ix < nx) {
+          var cx = x0 + (ix + 0.5) * passo, cy = y0 + (iy + 0.5) * passo;
+          var mia = Infinity, min = Infinity;
+          for (r = 0; r < righe.length; r++) {
+            var d = distanzaDaTratto([cx, cy], righe[r]);
+            if (r === indice) mia = d;
+            if (d < min) min = d;
+          }
+          dentro = mia <= min + margine;
+        }
+        if (dentro && da < 0) da = ix;
+        else if (!dentro && da >= 0) {
+          g.rect(x0 + da * passo, y0 + iy * passo, (ix - da) * passo, passo);
+          da = -1;
+        }
+      }
+    }
+    g.fill();
 
     return { cnv: cnv, x: x0, y: y0, w: w, h: h };
   }
@@ -1102,8 +1143,13 @@
 
       /* La superficie di ciascuna lettera spartita fra le sue righe. In
          disegno la lettera intera si ritaglia con la regione della riga. */
-      posto.tratti.forEach(function (tr) { tr.tess = tessera(tr.A, tDa.anelli, tDa.box); });
-      posto.nate.forEach(function (nb) { nb.tess = tessera(skA[nb.indice], tA.anelli, tA.box); });
+      var righeDa = posto.tratti.map(function (tr) { return tr.A; });
+      posto.tratti.forEach(function (tr, q) {
+        tr.tess = tessera(q, righeDa, tDa.anelli, tDa.box);
+      });
+      posto.nate.forEach(function (nb) {
+        nb.tess = tessera(nb.indice, skA, tA.anelli, tA.box);
+      });
       posto.sagomaDa = tDa.anelli;
       posto.sagomaA  = tA.anelli;
 

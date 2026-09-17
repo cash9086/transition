@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8">
+<style>
+@font-face{font-family:'Cormorant';font-weight:300;src:url(font/cormorant.woff2) format('woff2');font-display:block}
+html,body{margin:0;background:#fbfaf7;font-family:monospace}canvas{display:block}
+</style>
+<canvas id=c></canvas>
+<script src="../cape-fold.js"></script>
+<script>
+/* Poche lettere, grandi, a poche progressioni: le grazie e i giunti si
+   giudicano solo da vicino. */
+(async function(){ try {
+  await document.fonts.load('300 200px Cormorant'); await document.fonts.ready;
+  const mod = capeFold.costruisci({
+    da:{testo:'ART & FASHION', famiglia:'Cormorant', peso:300, spaziatura:0.02},
+    a: {testo:'VOID AND MARK', famiglia:'Cormorant', peso:300, spaziatura:-0.035}
+  });
+  const COPPIE=[[9,'H>M'],[0,'A>V'],[11,'O>R'],[6,'F>N']], PASSI=[0,0.25,0.5,0.75,1];
+  const CELLA=300, CORPO=210;
+  const cnv=document.getElementById('c'), ctx=cnv.getContext('2d');
+  cnv.width=CELLA*PASSI.length; cnv.height=CELLA*COPPIE.length;
+  ctx.fillStyle='#fbfaf7'; ctx.fillRect(0,0,cnv.width,cnv.height);
+  COPPIE.forEach(([idx,nome],r)=>{
+    PASSI.forEach((p,k)=>{
+      const sotto = {posti:[mod.posti[idx]], ease:mod.ease, largDa:0, largA:0};
+      ctx.save();
+      ctx.translate(CELLA*k - mod.posti[idx].xDa*CORPO + 55, CELLA*r + CELLA*0.7);
+      capeFold.disegna(ctx, sotto, p, {da:{x:0,y:0,corpo:CORPO}, a:{x:(mod.posti[idx].xDa-mod.posti[idx].xA)*CORPO,y:0,corpo:CORPO}});
+      ctx.restore();
+      ctx.fillStyle='#08c'; ctx.font='12px monospace';
+      ctx.fillText(nome+'  p='+p, CELLA*k+8, CELLA*r+18);
+      ctx.fillStyle='#252a22';
+    });
+  });
+  window.__pronto=true;
+  } catch(err){ window.__errore = ''+(err && err.stack || err); window.__pronto=true; }
+})();

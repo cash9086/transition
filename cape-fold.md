@@ -274,34 +274,53 @@ piega. Qui lo spessore non si tocca. Resta comunque una trasformazione affine,
 quindi manda rette in rette — ed e' tutto quello che serve perche' le aste
 restino dritte e dure.
 
-A ogni riga tocca la sua **competenza**: la parte di lettera che le sta piu'
-vicino che a ogni altra riga. Contiene la grazia per quanto lontana sporga,
-perche' la grazia di un'asta e' comunque piu' vicina alla sua asta che alla
-traversa. Poi la competenza si **allarga** di un margine (`margineCella`), cosi'
-ai giunti — dove due righe sono quasi equidistanti — la stessa macchia
-d'inchiostro finisce nella competenza di tutte e due e viene disegnata due
-volte, una per riga, invece di essere assegnata a una sola e tagliata via
-all'altra.
+Durante la piega la lettera non viene **ritagliata**: viene **costruita**, una
+riga per volta. Di ogni riga si misura, punto per punto, l'intervallo di pieno
+che si trova sulla perpendicolare — e da quel profilo esce una sagoma chiusa.
+Cosi' una riga e' un oggetto a se' *per definizione*: non esiste nessuna lettera
+intera da cui ritagliarla, quindi non esiste nessun bordo che possa restare
+sbagliato. Ed e' vettoriale, quindi netta a qualunque corpo.
 
-Le due strade prese prima avevano ciascuna un difetto opposto, ed e' per questo
-che vanno tenute insieme:
+Tre cose che sono servite per arrivarci, tutte trovate rompendo qualcosa:
 
-- **Spartire e basta**, ogni pezzetto a una sola riga: il confine fra l'asta e
-  la traversa passa DENTRO l'asta, e la traversa ruotando se ne porta via un
-  morso. I bordi sbrecciati non erano righe piegate male: erano righe TAGLIATE.
-- **Una fascia a distanza fissa** dalla riga: il raggio esce dallo spessore
-  dell'asta, ma **la grazia sporge molto piu' in la'** e resta fuori. Le aste
-  finivano con un taglio netto al posto della grazia e l'anello della `O` si
-  spezzava in archi con gli estremi tagliati dritti.
+- **Il punto della riga non sta necessariamente dentro l'inchiostro.** Gli
+  scheletri sono disegnati a mano e su parecchie lettere cadono un po' fuori;
+  da un punto fuori la misura da' zero e la riga esce come un capello. Quindi
+  si guarda tutta la retta, si prende l'intervallo di pieno piu' vicino e ci si
+  *centra* sopra: la riga si aggancia all'inchiostro invece di fidarsi di dov'e'
+  stata disegnata.
+- **La scelta dell'intervallo va fatta in catena**, non campione per campione.
+  Vicino a un giunto ci sono due intervalli — il proprio e quello della riga che
+  incrocia — e scegliendo ognuno per conto proprio, due campioni confinanti
+  finiscono su intervalli diversi: la sagoma esce a denti di sega.
+- **Serve un tetto sullo spessore.** Dove la traversa incrocia l'asta, la
+  perpendicolare corre dentro l'asta per tutta la sua altezza: li' l'intervallo
+  e' enorme e senza tetto la traversa si ingrassa fino a inghiottire l'asta —
+  e siccome l'aggancio e' a catena, se lo porta dietro lungo tutta la riga.
 
-Competenza (prende la grazia, dovunque sia) piu' margine (copre il giunto) non
-taglia piu' niente da nessuna parte. Si vede nella misura: nella prima meta'
-della corsa l'inchiostro resta al 100-101%, cioe' non se ne perde.
+## Dove si e' fermato, e perche'
 
-Ne' la lettera ne' la competenza cambiano mai, quindi la loro intersezione si
-calcola all'avvio e si tiene come **tessera**; a ogni fotogramma resta da
-appoggiare la tessera dove la riga la manda. Ai due estremi si torna al
-vettoriale, perche' una tessera da ferma mostrerebbe la grana.
+**La geometria e' pulita: nessuna scheggia, nessun dente, nessun morso.** Ogni
+pezzo e' una riga intera con i bordi netti. Ma **le lettere non sono piu'
+riconoscibili**: la ricostruzione dal profilo non restituisce il disegno di
+Editorial New, restituisce una sua parodia. E l'inchiostro sta il 20-30% sopra
+il dovuto.
+
+La causa e' una sola, e non e' una taratura: **gli scheletri sono disegnati a
+mano e non coincidono con l'asse vero delle aste del carattere.** Finche' la
+riga non e' l'asse vero, ricostruire la lettera dal suo profilo non puo' dare
+la lettera.
+
+La strada giusta e' smettere di disegnare gli scheletri e **ricavarli dal
+carattere**: assottigliare il raster del glifo fino all'asse mediano, potare i
+rami spuri delle grazie, e spezzare quello che resta in righe nei punti di
+diramazione. Con l'asse vero e la funzione raggio, la ricostruzione non e'
+un'approssimazione — e' esatta per costruzione, ed e' l'unica versione che
+puo' stare in piedi senza un "quasi".
+
+Nel frattempo, la versione che taglia la lettera vera resta al commit
+`fe751d7`: lettere giuste, qualche scheggia. Questa: geometria giusta, lettere
+sbagliate.
 
 **Non si spezza mai una riga.** Una lettera ha le righe che ha: la `H` ne ha
 tre, due verticali e una orizzontale. Pareggiare i conti col numero di righe

@@ -96,18 +96,27 @@
        righe si portano dietro pezzi delle vicine — che non e' un guasto,
        perche' l'inchiostro duplicato sparisce nell'unione, ma e' peso inutile.
        Stretti, una grazia resta indietro e si stacca dalla sua asta. */
-    /* Di quanto si allarga la competenza di una riga oltre il suo confine,
-       in em. E' il margine che fa sovrapporre le competenze ai giunti: deve
-       valere almeno mezzo spessore d'asta, altrimenti sul confine resta un
-       taglio. Largo, ogni riga si porta dietro pezzi delle vicine — non e' un
-       guasto, l'inchiostro duplicato sparisce nell'unione, ma e' materiale che
-       vola in mezzo alla piega. */
-    margineCella: 0.05,
+    /* Quanti punti per misurare il profilo di una riga. Fitto: e' da questo
+       che dipende se lo svaso di una grazia si legge o si impasta. */
+    campioniProfilo: 72,
 
-    /* Quanto e' fitta la griglia su cui si decide la competenza. Il confine
-       fra due competenze cade dentro l'inchiostro duplicato, quindi la sua
-       scalettatura non si vede — ma sotto 30 comincia a vedersi. */
-    griglia: 56,
+    /* Quanto puo' sporgere il profilo, in em, prima che si smetta di cercare. */
+    tettoProfilo: 0.5,
+
+    /* Di quanto puo' spostarsi il centro del profilo da un campione al
+       successivo prima che si consideri un salto su un altro intervallo di
+       inchiostro — cioe' su un'altra riga — e lo si rifiuti. */
+    saltoMax: 0.045,
+
+    /* Quanti campioni per lato nella lisciatura del profilo. */
+    lisciatura: 3,
+
+    /* Di quante volte il profilo puo' superare lo spessore di riferimento
+       della riga. Sotto 2 le grazie si tosano; sopra 5 la traversa, nel punto
+       in cui incrocia l'asta, si gonfia fin dentro l'asta. */
+    tettoGrazia: 1.8,
+    minimoGrazia: 0.45,
+    percentileSpessore: 0.20,
 
     /* Quanti pixel per em vale una tessera. Le tessere si disegnano una volta
        all'avvio e poi si spostano soltanto, quindi conta solo che siano
@@ -684,128 +693,206 @@
     }
   }
 
-  /* ——— la fascia di una riga ——————————————————————————————————————
-     A ogni riga tocca la SUA fascia di inchiostro: un rettangolo orientato
-     come la riga, lungo quanto la riga piu' le sue grazie, e largo quanto
-     l'asta e' spessa. L'asta della H, grazie comprese, e' un oggetto solo.
+  /* ——— la sagoma di una riga, misurata sulla lettera vera ——————————
+     Durante la piega la lettera non viene RITAGLIATA: viene COSTRUITA, una
+     riga per volta.
 
-     La cosa importante e' che le fasce SI SOVRAPPONGONO, e va bene cosi'.
-     Nel punto in cui la traversa incrocia l'asta, quell'inchiostro sta in
-     tutte e due le fasce: viene disegnato due volte, in due posti diversi,
-     e l'unione non se ne accorge.
+     Di ogni riga si misura, punto per punto, di quanto sporge l'inchiostro a
+     destra e a sinistra: si tira una retta perpendicolare alla riga e si vede
+     dove esce dalla lettera. Quel profilo porta dentro tutto quello che il
+     carattere fa davvero — lo spessore dell'asta, il contrasto fra pieno e
+     filetto, lo svaso delle grazie — e da li' esce una sagoma chiusa.
 
-     Prima spartivo la superficie a griglia, ogni pezzetto alla riga piu'
-     vicina — e un pezzetto solo a una riga. Quindi il confine fra l'asta e la
-     traversa passava DENTRO l'asta, e quando la traversa ruotava si portava
-     via un morso di asta. Erano quelli i bordi sbrecciati: non righe che si
-     piegano male, righe TAGLIATE. Duplicare l'inchiostro del giunto invece
-     di spartirlo toglie il problema per costruzione: non c'e' nessun taglio
-     da nessuna parte, quindi non c'e' niente che si possa spezzare. */
+     Cosi' una riga e' un oggetto a se' PER DEFINIZIONE: non esiste nessuna
+     lettera intera da cui ritagliarla, quindi non esiste nessun bordo che
+     possa restare sbagliato. E' la differenza fra questa versione e tutte
+     quelle prima, che ritagliavano una lettera vera con uno scheletro
+     approssimato e lasciavano sempre una scheggia da qualche parte: la
+     scheggia non si stringe finche' non si vede, non c'e'.
+     In piu' e' vettoriale, quindi resta netta a qualunque corpo. */
 
-  /* Quanto e' spessa l'asta lungo questa riga: la massima distanza fra un
-     punto della riga e il contorno piu' vicino, raddoppiata. E' il raggio
-     dell'inchiostro che la riga si porta addosso. */
-  function spessoreRiga(riga, anelli) {
-    var max = 0, i, k, a, q;
-    for (i = 0; i < riga.length; i++) {
-      var d2min = Infinity;
-      for (a = 0; a < anelli.length; a++) {
-        var an = anelli[a];
-        for (k = 0; k < an.length; k += 3) {
-          q = an[k];
-          var dx = q[0] - riga[i][0], dy = q[1] - riga[i][1];
-          var d2 = dx * dx + dy * dy;
-          if (d2 < d2min) d2min = d2;
+  /* Il punto sta dentro l'inchiostro? Conteggio pari-dispari su tutti gli
+     anelli insieme. */
+  function dentroInchiostro(px, py, anelli) {
+    var dentro = false, a, i, j, an;
+    for (a = 0; a < anelli.length; a++) {
+      an = anelli[a];
+      for (i = 0, j = an.length - 1; i < an.length; j = i++) {
+        var yi = an[i][1], yj = an[j][1];
+        if ((yi > py) !== (yj > py)) {
+          var x = (an[j][0] - an[i][0]) * (py - yi) / ((yj - yi) || 1e-12) + an[i][0];
+          if (px < x) dentro = !dentro;
         }
       }
-      var d = Math.sqrt(d2min);
-      if (d > max) max = d;
     }
-    return max * 2;
+    return dentro;
   }
 
-  /* L'inchiostro che una riga si porta addosso, calcolato una volta sola.
-
-     La fascia non e' un rettangolo: SEGUE la riga. Su un'asta dritta e' una
-     stecca, sull'anello della O e' una ciambella. Con un rettangolo orientato
-     la O perdeva i fianchi — il rettangolo ne prendeva una striscia
-     orizzontale e buttava il resto.
-
-     Siccome ne' la lettera ne' la fascia cambiano mai, la loro intersezione si
-     calcola all'avvio e si tiene come tessera. A ogni fotogramma resta da
-     appoggiare la tessera dove la riga la manda: un disegno di immagine, non
-     un ritaglio da rifare. */
-  function tessera(indice, righe, anelli, box) {
-    /* La competenza di una riga e' la parte di lettera che le sta piu' vicino
-       che a ogni altra riga: contiene la grazia per quanto lontana sporga,
-       perche' la grazia di un'asta e' comunque piu' vicina alla sua asta che
-       alla traversa. Poi la si ALLARGA di un margine: cosi' ai giunti, dove
-       due righe sono quasi equidistanti, la stessa macchia d'inchiostro
-       finisce nella competenza di tutte e due, e viene disegnata due volte —
-       una per riga — invece di essere assegnata a una sola e tagliata via
-       all'altra.
-
-       Le due strade prese prima avevano ciascuna un difetto opposto, ed e'
-       per questo che vanno tenute insieme:
-       - spartire e basta, ogni pezzetto a una sola riga: il confine passa
-         dentro l'asta e la traversa ruotando se ne porta via un morso;
-       - una fascia a distanza fissa dalla riga: il raggio esce dallo spessore
-         dell'asta, ma la grazia sporge molto piu' in la' e resta fuori. Le
-         aste finivano con un taglio netto al posto della grazia, e l'anello
-         della O si spezzava in archi.
-       Competenza (prende la grazia) piu' margine (copre il giunto) non taglia
-       piu' niente da nessuna parte. */
-    var S = C.tessera, passo = Math.max(box.w, box.h) / C.griglia;
-    if (!(passo > 0)) passo = 0.02;
-    var margine = C.margineCella + passo;
-    var x0 = box.x - margine * 2, y0 = box.y - margine * 2;
-    var w = box.w + margine * 4, h = box.h + margine * 4;
-
-    var cnv = document.createElement("canvas");
-    cnv.width = Math.max(4, Math.ceil(w * S));
-    cnv.height = Math.max(4, Math.ceil(h * S));
-    var g = cnv.getContext("2d");
-    g.setTransform(S, 0, 0, S, -x0 * S, -y0 * S);
-
-    g.fillStyle = C.coloreDa;
-    g.beginPath();
-    anelli.forEach(function (an) {
-      var k;
-      g.moveTo(an[0][0], an[0][1]);
-      for (k = 1; k < an.length; k++) g.lineTo(an[k][0], an[k][1]);
-      g.closePath();
-    });
-    g.fill();
-
-    /* la maschera: le caselle di competenza, allargate */
-    g.globalCompositeOperation = "destination-in";
-    g.fillStyle = "#000";
-    g.beginPath();
-    var nx = Math.ceil(w / passo), ny = Math.ceil(h / passo), ix, iy, r;
-    for (iy = 0; iy < ny; iy++) {
-      var da = -1;
-      for (ix = 0; ix <= nx; ix++) {
-        var dentro = false;
-        if (ix < nx) {
-          var cx = x0 + (ix + 0.5) * passo, cy = y0 + (iy + 0.5) * passo;
-          var mia = Infinity, min = Infinity;
-          for (r = 0; r < righe.length; r++) {
-            var d = distanzaDaTratto([cx, cy], righe[r]);
-            if (r === indice) mia = d;
-            if (d < min) min = d;
-          }
-          dentro = mia <= min + margine;
-        }
-        if (dentro && da < 0) da = ix;
-        else if (!dentro && da >= 0) {
-          g.rect(x0 + da * passo, y0 + iy * passo, (ix - da) * passo, passo);
-          da = -1;
-        }
+  /* Dove la retta che passa per un punto, in una data direzione, entra ed esce
+     dall'inchiostro: tutte le traversate, ordinate. */
+  function traversate(px, py, dx, dy, anelli, tetto) {
+    var fuori = [], a, i, an;
+    for (a = 0; a < anelli.length; a++) {
+      an = anelli[a];
+      for (i = 0; i < an.length; i++) {
+        var x1 = an[i][0], y1 = an[i][1];
+        var k = (i + 1) % an.length;
+        var ex = an[k][0] - x1, ey = an[k][1] - y1;
+        var den = dx * ey - dy * ex;
+        if (den > -1e-12 && den < 1e-12) continue;
+        var u = ((x1 - px) * dy - (y1 - py) * dx) / den;
+        if (u < 0 || u >= 1) continue;
+        var t = ((x1 - px) * ey - (y1 - py) * ex) / den;
+        if (t > -tetto && t < tetto) fuori.push(t);
       }
     }
-    g.fill();
+    fuori.sort(function (m, n) { return m - n; });
+    return fuori;
+  }
 
-    return { cnv: cnv, x: x0, y: y0, w: w, h: h };
+  /* L'intervallo di pieno su cui si appoggia questo punto della riga.
+
+     Non si da' per scontato che il punto stia dentro l'inchiostro: gli
+     scheletri sono disegnati a mano e su parecchie lettere cadono un po'
+     fuori. Da un punto fuori, misurare "quanto sporge l'inchiostro" da' zero,
+     e la riga esce come un capello. Quindi si guarda tutta la retta, si
+     prende l'intervallo di pieno che contiene il punto — o, se il punto e'
+     fuori, quello che gli sta piu' vicino — e ci si CENTRA sopra. La riga si
+     aggancia all'inchiostro vero invece di fidarsi di dov'e' stata disegnata,
+     e come effetto secondario si raddrizza da sola sul disegno del carattere. */
+  function intervalli(px, py, nx, ny, anelli, tetto) {
+    var t = traversate(px, py, nx, ny, anelli, tetto), out = [], i;
+    for (i = 0; i + 1 < t.length; i += 2) {
+      out.push({ c: (t[i] + t[i + 1]) / 2, mezzo: (t[i + 1] - t[i]) / 2 });
+    }
+    return out;
+  }
+
+  function percentile(v, q) {
+    if (!v.length) return 0;
+    var w = v.slice().sort(function (a, b) { return a - b; });
+    return w[Math.min(w.length - 1, Math.max(0, Math.round((w.length - 1) * q)))];
+  }
+
+  function mediana(v) {
+    var w = v.slice().sort(function (a, b) { return a - b; });
+    return w.length ? w[Math.floor(w.length / 2)] : 0;
+  }
+
+  /* La sagoma: una lista di contorni chiusi, in coordinate em. */
+  function sagomaRiga(riga, anelli) {
+    var chiusa = Math.hypot(riga[0][0] - riga[riga.length - 1][0],
+                            riga[0][1] - riga[riga.length - 1][1]) < 1e-4;
+    var P = campiona(chiusa ? riga.slice(0, -1) : riga, C.campioniProfilo, chiusa);
+    var n = P.length, i;
+
+    var L = new Float64Array(n), R = new Float64Array(n);
+    var nx = new Float64Array(n), ny = new Float64Array(n);
+    var cand = new Array(n);
+
+    for (i = 0; i < n; i++) {
+      var a = P[(i - 1 + n) % n], b = P[(i + 1) % n];
+      if (!chiusa) { a = P[Math.max(i - 1, 0)]; b = P[Math.min(i + 1, n - 1)]; }
+      var tx = b[0] - a[0], ty = b[1] - a[1];
+      var lt = Math.hypot(tx, ty) || 1e-6;
+      nx[i] = -ty / lt; ny[i] = tx / lt;
+
+      cand[i] = intervalli(P[i][0], P[i][1], nx[i], ny[i], anelli, C.tettoProfilo);
+    }
+
+    /* La scelta dell'intervallo va fatta IN CATENA, non campione per campione.
+       Un punto vicino a un giunto ha davanti a se' due intervalli di pieno —
+       il suo e quello della riga che incrocia — e scegliendo ognuno per conto
+       proprio il piu' vicino a zero, due campioni confinanti finiscono su due
+       intervalli diversi: il profilo salta e la sagoma esce a denti di sega.
+       Quindi si parte dal campione che ha l'intervallo piu' netto e si
+       prosegue nelle due direzioni tenendo, ogni volta, l'intervallo il cui
+       centro sta piu' vicino a quello gia' scelto dal campione precedente. */
+    var scelto = new Array(n), cen = new Float64Array(n), mez = new Float64Array(n);
+    var via = -1, viaMezzo = 0;
+    for (i = 0; i < n; i++) {
+      var c0 = cand[i];
+      for (var q = 0; q < c0.length; q++) {
+        if (Math.abs(c0[q].c) < 0.02 && c0[q].mezzo > viaMezzo) { viaMezzo = c0[q].mezzo; via = i; scelto[i] = c0[q]; }
+      }
+    }
+    if (via < 0) { via = 0; scelto[0] = cand[0][0] || { c: 0, mezzo: 0.02 }; }
+
+    function incatena(passo) {
+      var prec = scelto[via], k, idx;
+      for (k = 1; k < n; k++) {
+        idx = (via + passo * k + n * 2) % n;
+        if (!chiusa && (via + passo * k < 0 || via + passo * k >= n)) break;
+        var lista = cand[idx], best = null, bd = Infinity;
+        for (var q2 = 0; q2 < lista.length; q2++) {
+          var d = Math.abs(lista[q2].c - prec.c);
+          if (d < bd) { bd = d; best = lista[q2]; }
+        }
+        if (best && bd < C.saltoMax) { scelto[idx] = best; prec = best; }
+        else scelto[idx] = { c: prec.c, mezzo: prec.mezzo };
+      }
+    }
+    incatena(1);
+    incatena(-1);
+
+    for (i = 0; i < n; i++) {
+      var sc = scelto[i] || { c: 0, mezzo: 0.02 };
+      cen[i] = sc.c; mez[i] = sc.mezzo;
+    }
+
+    /* Una lisciata: il profilo misurato su un contorno vero ha sempre un po'
+       di tremolio, e su una sagoma grande si legge come un bordo ondulato. */
+    var cen2 = new Float64Array(n), mez2 = new Float64Array(n);
+    for (i = 0; i < n; i++) {
+      var sc2 = 0, sm = 0, peso = 0;
+      for (var d2 = -C.lisciatura; d2 <= C.lisciatura; d2++) {
+        var idx2 = i + d2;
+        if (chiusa) idx2 = (idx2 + n * 2) % n;
+        else if (idx2 < 0 || idx2 >= n) continue;
+        var w2 = C.lisciatura + 1 - Math.abs(d2);
+        sc2 += cen[idx2] * w2; sm += mez[idx2] * w2; peso += w2;
+      }
+      cen2[i] = sc2 / peso; mez2[i] = sm / peso;
+    }
+
+    /* Il tetto sullo spessore. Nel punto in cui la traversa incrocia l'asta,
+       la perpendicolare alla traversa corre DENTRO l'asta per tutta la sua
+       altezza: li' l'intervallo di pieno e' enorme, e senza tetto la traversa
+       si ingrassa fino a inghiottire l'asta — e se lo porta dietro lungo tutta
+       la riga, perche' l'aggancio e' a catena. Il riferimento si prende in
+       mezzo alla riga, lontano dai capi e dai giunti. */
+    var mezzoP = [];
+    for (i = Math.floor(n * 0.2); i < Math.ceil(n * 0.8); i++) mezzoP.push(mez2[i]);
+    /* Non la mediana ma un percentile basso: i campioni sui giunti misurano
+       un intervallo largo e tirano su la mediana, mentre lo spessore vero
+       dell'asta sta nella parte bassa della distribuzione. */
+    var nominale = percentile(mezzoP, C.percentileSpessore) || 0.02;
+    var tetto = nominale * C.tettoGrazia, piano = nominale * C.minimoGrazia;
+
+    for (i = 0; i < n; i++) {
+      var m2 = mez2[i];
+      if (m2 > tetto) m2 = tetto;
+      if (m2 < piano) m2 = piano;
+      P[i] = [P[i][0] + nx[i] * cen2[i], P[i][1] + ny[i] * cen2[i]];
+      L[i] = R[i] = m2;
+    }
+
+    var sin = [], des = [];
+    for (i = 0; i < n; i++) {
+      sin.push([P[i][0] + nx[i] * L[i], P[i][1] + ny[i] * L[i]]);
+      des.push([P[i][0] - nx[i] * R[i], P[i][1] - ny[i] * R[i]]);
+    }
+
+    if (chiusa) {
+      /* un anello: bordo esterno e bordo interno, girati al contrario l'uno
+         dall'altro, cosi' il non-zero ci lascia il buco in mezzo */
+      des.reverse();
+      return [sin, des];
+    }
+    /* una stecca: si va avanti da un lato e si torna dall'altro, e i due capi
+       si chiudono piatti — che e' poi come finisce il piede di una grazia */
+    des.reverse();
+    return [sin.concat(des)];
   }
 
   /* ——— quando i conti non tornano ————————————————————————————————
@@ -1143,13 +1230,8 @@
 
       /* La superficie di ciascuna lettera spartita fra le sue righe. In
          disegno la lettera intera si ritaglia con la regione della riga. */
-      var righeDa = posto.tratti.map(function (tr) { return tr.A; });
-      posto.tratti.forEach(function (tr, q) {
-        tr.tess = tessera(q, righeDa, tDa.anelli, tDa.box);
-      });
-      posto.nate.forEach(function (nb) {
-        nb.tess = tessera(nb.indice, skA, tA.anelli, tA.box);
-      });
+      posto.tratti.forEach(function (tr) { tr.sagoma = sagomaRiga(tr.A, tDa.anelli); });
+      posto.nate.forEach(function (nb) { nb.sagoma = sagomaRiga(skA[nb.indice], tA.anelli); });
       posto.sagomaDa = tDa.anelli;
       posto.sagomaA  = tA.anelli;
 
@@ -1249,59 +1331,46 @@
         return;
       }
 
-      /* L'assemblaggio. Per ogni barra: si porta il piano dove la barra la
-         manda, si ritaglia alla regione che le tocca, e dentro quel ritaglio
-         si disegna la lettera INTERA. Quello che resta e' la sua parte di
-         lettera, spostata rigidamente. L'unione delle parti — che si
-         sovrappongono ai giunti — e' la lettera piegata.
-
-         La lettera si disegna per intero tutte le volte, e non e' uno spreco:
-         e' il motivo per cui i controinterni restano buchi. Ritagliare un
-         pezzo di CONTORNO e richiuderlo obbligherebbe a tirare una corda
-         attraverso il vuoto, e il vuoto si riempirebbe di nero. */
+      /* L'assemblaggio: ogni riga e' una sagoma chiusa, portata dove la riga
+         la manda. Tutte le sagome finiscono in un solo contorno e in un solo
+         riempimento non-zero, quindi dove due righe si sovrappongono si
+         fondono senza lasciare traccia del giunto. */
+      ctx.beginPath();
       po.tratti.forEach(function (tr) {
-        var m = tr.mot;
-        var kk = 1 + (m.k - 1) * e;
-        var d = kk - 1;
-
-        ctx.save();
-        ctx.translate(ox, oy);
-        ctx.scale(corpo, corpo);
-        ctx.translate(lerp(m.ax, m.bx, e), lerp(m.ay, m.by, e));
-        ctx.rotate(m.ang * e);
-        /* L'allungamento sul solo asse della barra: I + (k-1)·u·u^T.
-           Fuori dall'asse non scala niente, quindi lo spessore dell'asta
-           non cambia mentre la barra si accorcia. */
-        ctx.transform(1 + d * m.ux * m.ux, d * m.ux * m.uy,
-                      d * m.ux * m.uy,     1 + d * m.uy * m.uy, 0, 0);
-        ctx.translate(-m.ax, -m.ay);
-
-        ctx.drawImage(tr.tess.cnv, tr.tess.x, tr.tess.y, tr.tess.w, tr.tess.h);
-        ctx.restore();
+        posaRiga(ctx, tr.sagoma, tr.mot, e, ox, oy, corpo);
       });
 
       /* Le righe che nella lettera d'arrivo ci sono e in quella di partenza
-         no: non hanno inchiostro da portare, quindi il loro pezzo viene dalla
-         lettera D'ARRIVO e il loro moto si legge a rovescio. A piega zero sono
-         accorciate a niente e non si vedono; a piega uno sono al loro posto,
-         intere. */
+         no: la loro sagoma e' misurata sulla lettera D'ARRIVO e il loro moto
+         si legge a rovescio. A piega zero sono accorciate a niente. */
       (po.nate || []).forEach(function (nb) {
-        var m2 = nb.mot, tb = 1 - e;
-        var kb = 1 + (m2.k - 1) * tb, db = kb - 1;
-
-        ctx.save();
-        ctx.translate(ox, oy);
-        ctx.scale(corpo, corpo);
-        ctx.translate(lerp(m2.ax, m2.bx, tb), lerp(m2.ay, m2.by, tb));
-        ctx.rotate(m2.ang * tb);
-        ctx.transform(1 + db * m2.ux * m2.ux, db * m2.ux * m2.uy,
-                      db * m2.ux * m2.uy,     1 + db * m2.uy * m2.uy, 0, 0);
-        ctx.translate(-m2.ax, -m2.ay);
-
-        ctx.drawImage(nb.tess.cnv, nb.tess.x, nb.tess.y, nb.tess.w, nb.tess.h);
-        ctx.restore();
+        posaRiga(ctx, nb.sagoma, nb.mot, 1 - e, ox, oy, corpo);
       });
+      ctx.fill();
     });
+  }
+
+  /* Porta una sagoma dove la sua riga la manda: ruota, trasla, e allunga sul
+     solo asse della riga. Essendo affine manda rette in rette — e' per questo
+     che le aste restano dritte, senza doverlo imporre da nessun'altra parte. */
+  function posaRiga(ctx, sagoma, m, t, ox, oy, corpo) {
+    var kk = 1 + (m.k - 1) * t;
+    var ca = Math.cos(m.ang * t), sa = Math.sin(m.ang * t);
+    var cx = lerp(m.ax, m.bx, t), cy = lerp(m.ay, m.by, t);
+    var i, k;
+    for (i = 0; i < sagoma.length; i++) {
+      var pezzo = sagoma[i];
+      for (k = 0; k < pezzo.length; k++) {
+        var rx = pezzo[k][0] - m.ax, ry = pezzo[k][1] - m.ay;
+        var lungo = (rx * m.ux + ry * m.uy) * (kk - 1);
+        var ax2 = rx + m.ux * lungo, ay2 = ry + m.uy * lungo;
+        var qx = cx + ax2 * ca - ay2 * sa;
+        var qy = cy + ax2 * sa + ay2 * ca;
+        var X = ox + qx * corpo, Y = oy + qy * corpo;
+        if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+      }
+      ctx.closePath();
+    }
   }
 
   function traccia1(ctx, pts, mappa) {

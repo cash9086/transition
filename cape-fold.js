@@ -91,6 +91,19 @@
        chiude tutto in una macchia nera. */
     scalaOsso: [0.82, 1.22],
 
+    /* Quanto e' fitta la griglia su cui si spartisce la superficie della
+       lettera fra le barre. Piu' fitta = confini piu' netti e costruzione piu'
+       lenta. Sotto 16 i confini si vedono a scaletta. */
+    griglia: 34,
+
+    /* Oltre questa progressione si disegna la lettera d'arrivo VERA invece
+       dell'assemblaggio delle barre. Le due non coincidono mai del tutto — un
+       pezzo della lettera di partenza appoggiato sul tratto d'arrivo porta le
+       grazie della lettera sbagliata — ma con lo stesso carattere da entrambe
+       le parti la differenza e' un'inezia. E' per questo che il carattere
+       unico e' portante e non decorativo. */
+    consegnaBarre: 0.97,
+
     /* ——— la qualita' del tracciamento ———————————————————————————
        Questi tre numeri vanno letti insieme, e sono tarati su un didone,
        cioe' sul caso peggiore. In un carattere a contrasto estremo — Bodoni,
@@ -536,6 +549,53 @@
      cosi' come sono la similitudine ci legge un'inversione e fa girare la
      lettera di mezzo giro su se' stessa. Quindi si prova anche col tratto
      d'arrivo percorso al contrario, e si tiene il verso che ruota meno. */
+  /* Il moto di una BARRA: ruota, trasla, e si allunga o si accorcia LUNGO IL
+     PROPRIO ASSE. Nient'altro.
+
+     Non e' una similitudine e non e' un caso particolare di quella: la
+     similitudine scala uguale in tutte le direzioni, quindi una barra che si
+     accorcia diventa anche piu' sottile, e la lettera cambia peso mentre si
+     piega. Qui lo spessore non si tocca — si muove solo la lunghezza. E'
+     esattamente "al massimo si accorciano".
+
+     Resta affine, quindi manda rette in rette: e' tutto quello che serve
+     perche' le aste restino dritte e dure. */
+  function motoBarra(A, B) {
+    var a0 = A[0], a1 = A[A.length - 1];
+    var b0 = B[0], b1 = B[B.length - 1];
+
+    var uax = a1[0] - a0[0], uay = a1[1] - a0[1];
+    var la = Math.hypot(uax, uay) || 1e-6;
+
+    /* Una barra non ha un verso: si prova anche col tratto d'arrivo percorso
+       al contrario e si tiene quello che ruota meno. Senza, l'asta della F —
+       scritta dall'alto in basso — contro quella della N — dal basso in alto —
+       fa fare mezzo giro a tutta la lettera. */
+    var scelte = [[b0, b1], [b1, b0]], best = null, i;
+    for (i = 0; i < 2; i++) {
+      var q0 = scelte[i][0], q1 = scelte[i][1];
+      var ubx = q1[0] - q0[0], uby = q1[1] - q0[1];
+      var lb = Math.hypot(ubx, uby) || 1e-6;
+      var ang = Math.atan2(uax * uby - uay * ubx, uax * ubx + uay * uby);
+      if (!best || Math.abs(ang) < Math.abs(best.ang)) best = { ang: ang, lb: lb };
+    }
+
+    function centro(P) {
+      var x = 0, y = 0, k;
+      for (k = 0; k < P.length; k++) { x += P[k][0]; y += P[k][1]; }
+      return [x / P.length, y / P.length];
+    }
+    var ca = centro(A), cb = centro(B);
+
+    return {
+      ax: ca[0], ay: ca[1],      /* perno di partenza                        */
+      bx: cb[0], by: cb[1],      /* perno d'arrivo                           */
+      ang: best.ang,             /* di quanto gira                           */
+      k: best.lb / la,           /* di quanto si allunga, sul proprio asse   */
+      ux: uax / la, uy: uay / la /* l'asse, nel sistema di partenza          */
+    };
+  }
+
   function similitudineLibera(A, B) {
     var dritta = similitudine(A, B);
     var rovescia = similitudine(A, B.slice().reverse());
@@ -579,6 +639,117 @@
       fuori[i][0] = cx + sc * (rx * ca - ry * sa) + m.res[i][0] * t;
       fuori[i][1] = cy + sc * (rx * sa + ry * ca) + m.res[i][1] * t;
     }
+  }
+
+  /* ——— la spartizione della SUPERFICIE ————————————————————————————
+     A ogni barra tocca la parte di lettera che le sta piu' vicino. Non un
+     pezzo di CONTORNO — un pezzo di SUPERFICIE: e' la differenza fra un taglio
+     che funziona e uno che tappa i controinterni di nero. Un pezzo di contorno
+     va chiuso, e per chiuderlo si tira una corda che passa per il vuoto; una
+     regione di piano non va chiusa, c'e' gia'.
+
+     La regione si costruisce su una griglia grossolana e si tiene come lista
+     di rettangoli, uniti per righe. In disegno diventa un ritaglio, e dentro
+     quel ritaglio si disegna la lettera INTERA: il risultato e' la lettera
+     intersecata la regione, trasformata dalla barra. L'unione su tutte le
+     barre e' l'assemblaggio.
+
+     Le regioni si allargano l'una dentro l'altra di una casella: e' quella
+     sovrapposizione che fa sparire il giunto. Senza, due barre che ruotano
+     diversamente aprono una fessura bianca sul confine — e una fessura si vede
+     peggio di una curva. */
+  function regioni(tratti, box, celle) {
+    var passo = Math.max(box.w, box.h) / celle;
+    if (!(passo > 0)) passo = 0.05;
+    var x0 = box.x - passo * 2, y0 = box.y - passo * 2;
+    var nx = Math.ceil((box.w + passo * 4) / passo);
+    var ny = Math.ceil((box.h + passo * 4) / passo);
+    var T = tratti.length, out = [], j, ix, iy;
+
+    /* Per ogni casella, la distanza da ogni barra: si calcola una volta. */
+    var dist = [];
+    for (iy = 0; iy < ny; iy++) {
+      for (ix = 0; ix < nx; ix++) {
+        var c = [x0 + (ix + 0.5) * passo, y0 + (iy + 0.5) * passo];
+        var riga = new Float64Array(T), min = Infinity;
+        for (j = 0; j < T; j++) {
+          riga[j] = distanzaDaTratto(c, tratti[j].A);
+          if (riga[j] < min) min = riga[j];
+        }
+        dist.push({ d: riga, min: min });
+      }
+    }
+
+    for (j = 0; j < T; j++) {
+      var rett = [];
+      for (iy = 0; iy < ny; iy++) {
+        var da = -1;
+        for (ix = 0; ix <= nx; ix++) {
+          var dentro = false;
+          if (ix < nx) {
+            var cel = dist[iy * nx + ix];
+            /* la casella e' di questa barra, o le sta abbastanza vicino da
+               dover essere condivisa: e' qui che nasce la sovrapposizione */
+            dentro = cel.d[j] <= cel.min + passo * 1.2;
+          }
+          if (dentro && da < 0) da = ix;
+          else if (!dentro && da >= 0) {
+            rett.push([x0 + da * passo, y0 + iy * passo, (ix - da) * passo, passo]);
+            da = -1;
+          }
+        }
+      }
+      out.push(rett);
+    }
+    return out;
+  }
+
+  /* ——— pareggiare il numero di barre ——————————————————————————————
+     Due lettere non hanno lo stesso numero di tratti: la R ne ha tre, la O
+     uno. Accoppiandoli per indice, i tre pezzi della R finiscono tutti sulla
+     stessa barra della O — e con le barre ammucchiate una O non viene fuori.
+
+     Invece di scegliere quale pezzo sacrificare, si SPEZZA la barra piu' lunga
+     della lettera che ne ha meno, finche' i conti tornano. L'anello della O
+     diventa tre archi e ognuno riceve un pezzo di R. Nessun tratto resta senza
+     destinazione e nessuna destinazione riceve due tratti.
+
+     Si spezza sempre la piu' lunga: e' l'unico criterio che non dipende
+     dall'ordine in cui sono scritte le tabelle, quindi spezzare due volte da'
+     lo stesso risultato di spezzarne una lunga il doppio. */
+  function spezza(tratto) {
+    var i, L = 0, acc = [0];
+    for (i = 1; i < tratto.length; i++) {
+      L += Math.hypot(tratto[i][0] - tratto[i - 1][0], tratto[i][1] - tratto[i - 1][1]);
+      acc.push(L);
+    }
+    if (L <= 0) return [tratto, tratto];
+    var meta = L / 2, k = 1;
+    while (k < acc.length - 1 && acc[k] < meta) k++;
+    var t = (meta - acc[k - 1]) / ((acc[k] - acc[k - 1]) || 1);
+    var mezzo = [lerp(tratto[k - 1][0], tratto[k][0], t),
+                 lerp(tratto[k - 1][1], tratto[k][1], t)];
+    var a = tratto.slice(0, k).concat([mezzo]);
+    var b = [mezzo].concat(tratto.slice(k));
+    return [campiona(a, C.campioniTratto, false), campiona(b, C.campioniTratto, false)];
+  }
+
+  function lunghezza(t) {
+    var L = 0, i;
+    for (i = 1; i < t.length; i++) L += Math.hypot(t[i][0] - t[i - 1][0], t[i][1] - t[i - 1][1]);
+    return L;
+  }
+
+  function pareggia(sa, sb) {
+    var A = sa.slice(), B = sb.slice(), guardia = 0;
+    while (A.length !== B.length && guardia++ < 12) {
+      var corto = A.length < B.length ? A : B;
+      var piu = 0, i;
+      for (i = 1; i < corto.length; i++) if (lunghezza(corto[i]) > lunghezza(corto[piu])) piu = i;
+      var due = spezza(corto[piu]);
+      corto.splice(piu, 1, due[0], due[1]);
+    }
+    return [A, B];
   }
 
   /* Accoppia i tratti di partenza con quelli d'arrivo.
@@ -835,114 +1006,32 @@
       posto.tipo = "piega";
 
       var skDa = scheletro(chDa, tDa), skA = scheletro(chA, tA);
-      var mappa = accoppia(skDa, skA);
-      var ctrlDa = [], ctrlA = [], s, k;
-      posto.tratti = [];
-      for (s = 0; s < skDa.length; s++) {
-        var dest = skA[mappa[s]] || skA[0];
-        var mot = similitudineLibera(skDa[s], dest);
-        var vista = [];
-        for (k = 0; k < C.campioniTratto; k++) {
-          ctrlDa.push(skDa[s][k]);
-          ctrlA.push(dest[k]);
-          var cella = [skDa[s][k][0], skDa[s][k][1]];
-          ctrlA.length;           /* ctrlA resta solo come riferimento */
-          vista.push(cella);
-        }
-        posto.tratti.push({ A: skDa[s], mot: mot, vista: vista });
-      }
 
-      /* L'ossatura al contrario: gli stessi tratti visti dalla lettera
-         d'arrivo, che tornano verso quella di partenza. Serve per deformare
-         anche la sagoma d'arrivo, all'indietro. Un tratto d'arrivo su cui
-         confluiscono piu' tratti di partenza diventa un osso solo: la strada
-         di ritorno e' una, anche se all'andata ci si arrivava da piu' parti. */
-      posto.tratti2 = [];
-      var visti = {};
-      for (s = 0; s < skDa.length; s++) {
-        var d2 = mappa[s];
-        if (visti[d2] || !skA[d2]) continue;
-        visti[d2] = 1;
-        posto.tratti2.push({ A: skA[d2], mot: similitudineLibera(skA[d2], skDa[s]) });
-      }
-      if (!posto.tratti2.length) posto.tratti2 = posto.tratti;
-      /* Il vettore piatto dei punti di controllo, nello stesso ordine in cui
-         i tratti lo riempiranno a ogni fotogramma. Le celle sono condivise:
-         i tratti scrivono dentro queste, e la deformazione legge di qui. */
-      posto.ctrlVivo = [];
-      posto.tratti.forEach(function (tr) {
-        tr.vista.forEach(function (c) { posto.ctrlVivo.push(c); });
-      });
       /* Senza scheletro in tabella (un carattere che non ho previsto) la
-         lettera non resta indietro: si usano i quattro angoli del suo
-         rettangolo d'inchiostro come punti di controllo. Non e' una piega,
-         e' una trasformazione affine — ma e' meglio di una lettera ferma. */
-      if (!ctrlDa.length) {
-        var bd = tDa.box, ba = tA.box, angoliDa = [], angoliA = [];
-        [[0,0],[1,0],[1,1],[0,1]].forEach(function (c) {
-          angoliDa.push([bd.x + c[0] * bd.w, bd.y + c[1] * bd.h]);
-          angoliA.push([ba.x + c[0] * ba.w, ba.y + c[1] * ba.h]);
-        });
-        ctrlDa = angoliDa;
-        var vistaA = angoliDa.map(function (c) { return [c[0], c[1]]; });
-        posto.tratti = [{ A: angoliDa, mot: similitudineLibera(angoliDa, angoliA), vista: vistaA }];
-        posto.ctrlVivo = vistaA;
+         lettera non resta indietro: una barra sola, la diagonale del suo
+         rettangolo d'inchiostro. Non e' una piega, e' un movimento rigido di
+         tutta la lettera — ma e' meglio di una lettera ferma. */
+      if (!skDa.length || !skA.length) {
+        var bd = tDa.box, ba = tA.box;
+        skDa = [[[bd.x, bd.y + bd.h], [bd.x + bd.w, bd.y]]];
+        skA  = [[[ba.x, ba.y + ba.h], [ba.x + ba.w, ba.y]]];
       }
-      posto.ctrlDa = ctrlDa;
 
-      var coppie = accoppiaAnelli(tDa.anelli, tA.anelli);
-      coppie.forEach(function (cp) {
-        var a = cp.a, b = cp.b;
-        if (!a && !b) return;
-        if (!a) {
-          /* Un contorno che all'arrivo c'e' e alla partenza no: germoglia
-             da un punto, e il punto e' il centro del contorno che gli
-             corrisponde di meno — cioe' il centro della lettera. */
-          var Nb = numPunti(b);
-          var cen = centroide(tDa.anelli[0]);
-          var dst = campiona(b, Nb, true);
-          var src = dst.map(function () { return [cen[0], cen[1]]; });
-          posto.anelli.push(prepara(src, dst, posto.tratti, posto.tratti2));
-          return;
-        }
-        var Na = numPunti(a);
-        if (!b) {
-          /* Un contropunzone che si chiude: il contorno collassa sul proprio
-             centro, e il centro lo porta la deformazione dove deve andare.
-             E' il buco della A che si tappa quando la A diventa una T. */
-          var srcA = campiona(a, Na, true);
-          var cenA = centroide(srcA);
-          var dstA = srcA.map(function () { return [cenA[0], cenA[1]]; });
-          var pz = prepara(srcA, srcA, posto.tratti);
-          pz.collassa = true;
-          posto.anelli.push(pz);
-          return;
-        }
-        var N = Math.max(Na, numPunti(b));
-        N = Math.min(N, C.maxPunti);
-        var src2 = campiona(a, N, true);
+      /* Pareggiati i conti, l'accoppiamento e' per indice e basta: le tabelle
+         SCHELETRI sono scritte in ordine d'importanza, e le barre nate da uno
+         spezzamento restano nella posizione della barra da cui vengono. */
+      var paio = pareggia(skDa, skA);
+      skDa = paio[0]; skA = paio[1];
+      posto.tratti = [];
+      for (var s = 0; s < skDa.length; s++) {
+        posto.tratti.push({ A: skDa[s], mot: motoBarra(skDa[s], skA[s]) });
+      }
 
-        /* Quale punto del contorno di partenza corrisponde a quale punto di
-           quello d'arrivo lo si decide confrontando le due sagome DOPO che lo
-           scheletro ha portato la prima dove deve andare, non prima.
-
-           Misurato fra le due lettere ferme, l'accoppiamento "piu' corto" fra
-           una A e una V — che e' una A capovolta — appaia l'apice della A con
-           lo spigolo in alto a sinistra della V: i punti si scambiano di posto
-           e la lettera si attorciglia a meta' corsa. Portata prima sopra la V
-           dallo scheletro, la A ci si appoggia sopra e la corrispondenza viene
-           da se'.
-
-           Misurato: gli auto-attraversamenti del contorno sulle quattro coppie
-           di prova scendono da 60 a 40. A occhio, sul fotogramma singolo,
-           sembrava un peggioramento — non lo era. */
-        var ganciF = preparaPelle(src2, posto.tratti);
-        var appoggio = src2.map(function () { return [0, 0]; });
-        applicaPelle(ganciF, src2, posto.tratti, 1, appoggio);
-        var dst2 = allinea(appoggio, campiona(b, N, true));
-
-        posto.anelli.push(prepara(src2, dst2, posto.tratti, posto.tratti2, ganciF));
-      });
+      /* La superficie della lettera spartita fra le barre, e la lettera
+         intera: in disegno la seconda si ritaglia con la prima. */
+      posto.regioni = regioni(posto.tratti, tDa.box, C.griglia);
+      posto.sagomaDa = tDa.anelli;
+      posto.sagomaA  = tA.anelli;
 
       posti.push(posto);
     }
@@ -989,11 +1078,8 @@
      corpo = corpo del carattere. */
   function disegna(ctx, mod, p, geo) {
     var e = mod.ease(p < 0 ? 0 : (p > 1 ? 1 : p));
-    var fus = morbida(C.fusioneDa, 1, e);
-
     var corpo = lerp(geo.da.corpo, geo.a.corpo, e);
     ctx.fillStyle = mescolaColore(C.coloreDa, C.coloreA, e);
-    ctx.beginPath();
 
     mod.posti.forEach(function (po) {
       if (po.tipo === "nulla") return;
@@ -1001,67 +1087,75 @@
       var ox = lerp(geo.da.x + po.xDa * geo.da.corpo, geo.a.x + po.xA * geo.a.corpo, e);
       var oy = lerp(geo.da.y, geo.a.y, e);
 
+      /* Una lettera che nasce dal niente o che sparisce: si apre o si chiude
+         sul proprio piede, senza barre da muovere. */
       if (po.tipo === "nasce" || po.tipo === "muore") {
-        /* Si apre da zero, o si chiude a zero, intorno al proprio piede. */
-        var q = po.tipo === "nasce" ? fus : 1 - morbida(0, C.fusioneDa, e);
+        var q = po.tipo === "nasce" ? morbida(C.fusioneDa, 1, e)
+                                    : 1 - morbida(0, C.fusioneDa, e);
         if (q <= 0.001) return;
+        ctx.beginPath();
         po.anelli.forEach(function (an) {
           traccia1(ctx, an.sola, function (pt) {
-            return [
-              ox + (po.perno[0] + (pt[0] - po.perno[0]) * q) * corpo,
-              oy + (po.perno[1] + (pt[1] - po.perno[1]) * q) * corpo
-            ];
+            return [ox + (po.perno[0] + (pt[0] - po.perno[0]) * q) * corpo,
+                    oy + (po.perno[1] + (pt[1] - po.perno[1]) * q) * corpo];
           });
         });
+        ctx.fill();
         return;
       }
 
-      /* La piega. Ogni tratto ruota verso la sua destinazione, il contorno
-         gli gira intorno, e nell'ultimo pezzo di corsa si fonde sulla sagoma
-         vera d'arrivo. */
-      po.anelli.forEach(function (an) {
-        applicaPelle(an.ganci, an.src, po.tratti, e, an.buf);
-
-        if (an.collassa) {
-          /* Un contropunzone che si chiude si stringe sul proprio centro
-             DOV'E' ADESSO, non dov'era alla partenza: il centro se l'e'
-             portato via lo scheletro insieme al resto della lettera. */
-          var cx = 0, cy = 0, n = an.buf.length, i;
-          for (i = 0; i < n; i++) { cx += an.buf[i][0]; cy += an.buf[i][1]; }
-          cx /= n; cy /= n;
-          var fc = morbida(0.2, 0.8, e);
-          if (fc >= 0.999) return;
-          traccia1(ctx, an.buf, function (pt) {
-            return [ox + lerp(pt[0], cx, fc) * corpo, oy + lerp(pt[1], cy, fc) * corpo];
+      /* In coda si passa alla lettera d'arrivo vera: l'assemblaggio la
+         sfiora ma non la centra, e l'ultimo fotogramma dev'essere esatto. */
+      if (e >= C.consegnaBarre) {
+        ctx.beginPath();
+        po.sagomaA.forEach(function (an) {
+          traccia1(ctx, an, function (pt) {
+            return [ox + pt[0] * corpo, oy + pt[1] * corpo];
           });
-          return;
-        }
-
-        /* La fusione e' simmetrica: da una parte la lettera di partenza
-           deformata IN AVANTI, dall'altra quella d'arrivo deformata
-           ALL'INDIETRO, e le due si incontrano a meta'. Fondere invece la
-           partenza deformata con un arrivo fermo e' la versione ingenua, e
-           al centro della corsa mette insieme due forme che non si
-           somigliano per niente: il contorno si attraversa e il riempimento
-           pari-dispari lo chiude in una macchia. Qui a meta' corsa le due
-           forme sono tutte e due a mezza rotazione, quindi si assomigliano
-           abbastanza da potersi mediare.
-           Agli estremi non c'e' approssimazione: a zero pesa solo la
-           partenza, a uno solo l'arrivo, e tutte e due sono esatte. */
-        applicaPelle(an.ganci2, an.dst, po.tratti2, 1 - e, an.buf2);
-        traccia1(ctx, an.buf, function (pt, i) {
-          var b = an.buf2[i];
-          return [
-            ox + lerp(pt[0], b[0], e) * corpo,
-            oy + lerp(pt[1], b[1], e) * corpo
-          ];
         });
+        ctx.fill();
+        return;
+      }
+
+      /* L'assemblaggio. Per ogni barra: si porta il piano dove la barra la
+         manda, si ritaglia alla regione che le tocca, e dentro quel ritaglio
+         si disegna la lettera INTERA. Quello che resta e' la sua parte di
+         lettera, spostata rigidamente. L'unione delle parti — che si
+         sovrappongono ai giunti — e' la lettera piegata.
+
+         La lettera si disegna per intero tutte le volte, e non e' uno spreco:
+         e' il motivo per cui i controinterni restano buchi. Ritagliare un
+         pezzo di CONTORNO e richiuderlo obbligherebbe a tirare una corda
+         attraverso il vuoto, e il vuoto si riempirebbe di nero. */
+      po.tratti.forEach(function (tr, j) {
+        var m = tr.mot;
+        var kk = 1 + (m.k - 1) * e;
+        var d = kk - 1;
+
+        ctx.save();
+        ctx.translate(ox, oy);
+        ctx.scale(corpo, corpo);
+        ctx.translate(lerp(m.ax, m.bx, e), lerp(m.ay, m.by, e));
+        ctx.rotate(m.ang * e);
+        /* L'allungamento sul solo asse della barra: I + (k-1)·u·u^T.
+           Fuori dall'asse non scala niente, quindi lo spessore dell'asta
+           non cambia mentre la barra si accorcia. */
+        ctx.transform(1 + d * m.ux * m.ux, d * m.ux * m.uy,
+                      d * m.ux * m.uy,     1 + d * m.uy * m.uy, 0, 0);
+        ctx.translate(-m.ax, -m.ay);
+
+        ctx.beginPath();
+        po.regioni[j].forEach(function (r) { ctx.rect(r[0], r[1], r[2], r[3]); });
+        ctx.clip();
+
+        ctx.beginPath();
+        po.sagomaDa.forEach(function (an) {
+          traccia1(ctx, an, function (pt) { return pt; });
+        });
+        ctx.fill();
+        ctx.restore();
       });
     });
-
-    /* NON-ZERO, non pari-dispari: vedi il commento sul verso degli anelli
-       in traccia(). E' li' che sta il motivo. */
-    ctx.fill();
   }
 
   function traccia1(ctx, pts, mappa) {

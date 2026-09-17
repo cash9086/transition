@@ -264,49 +264,44 @@ manda rette in rette, sempre. I giunti non si spezzano perche' i pezzi si
 sovrappongono invece di stirarsi, e il riempimento non-zero li fonde in un
 solido unico.
 
-### Il primo taglio rigido, e perche' e' sbagliato
+### Come e' fatto adesso: barre e regioni
 
-Tentato: etichettare ogni punto del contorno con l'osso piu' vicino, spezzare il
-contorno nei tratti a etichetta costante, e chiudere ogni tratto con una corda
-fra il suo primo e il suo ultimo punto.
+Ogni tratto dello scheletro e' una **barra**. Una barra fa tre cose e nessun'altra:
+ruota, trasla, e si allunga o si accorcia **lungo il proprio asse**. Non e' una
+similitudine: quella scala uguale in tutte le direzioni, quindi una barra che si
+accorcia diventerebbe anche piu' sottile e la lettera cambierebbe peso mentre si
+piega. Qui lo spessore non si tocca. Resta comunque una trasformazione affine,
+quindi manda rette in rette — ed e' tutto quello che serve perche' le aste
+restino dritte e dure.
 
-Non funziona, e si vede subito: gia' a `p=0` i controinterni si tappano di nero.
-La corda non e' un taglio nella lettera — passa attraverso il vuoto. Sui
-contorni interni, il triangolo della `A` o l'occhiello della `O`, la corda
-racchiude proprio il vuoto e lo riempie.
+A ogni barra tocca una **regione** di lettera, non un pezzo di contorno. La
+differenza e' tutto: un pezzo di contorno va chiuso, e per chiuderlo si tira una
+corda che passa per il vuoto — gia' a `p=0` i controinterni si tappavano di
+nero. Una regione di piano non va chiusa, c'e' gia'.
 
-**Un pezzo rigido non si ottiene ritagliando il BORDO: si ottiene ritagliando la
-SUPERFICIE.** Il codice di quel tentativo non e' rimasto in albero; se serve
-rivederlo, e' la differenza fra `pezzi()` che taglia una sequenza di punti e
-quello che andrebbe fatto qui sotto.
+In disegno, per ogni barra: si porta il piano dove la barra lo manda, si ritaglia
+alla sua regione, e dentro quel ritaglio si disegna **la lettera intera**. Quello
+che resta e' la sua parte, spostata rigidamente. L'unione delle parti e' la
+lettera piegata. Le regioni si allargano l'una dentro l'altra di una casella:
+e' quella sovrapposizione che fa sparire il giunto, perche' una fessura bianca
+si vede peggio di una curva.
 
-### La costruzione giusta, da fare
+**Le barre si pareggiano di numero.** La `R` ne ha tre, la `O` una: accoppiando
+per indice, i tre pezzi della `R` finivano ammucchiati sull'unica barra della `O`
+e una `O` non veniva fuori. Invece di scegliere quale pezzo sacrificare, si
+spezza in due la barra piu' lunga della lettera che ne ha meno, finche' i conti
+tornano — l'anello della `O` diventa tre archi, uno per ogni pezzo di `R`.
 
-Per ogni osso `j`, con il contesto sotto la trasformazione `T_j(t)`:
-
-1. ritaglia (`clip`) alla **regione** dei punti di partenza piu' vicini a `j`,
-   espressa nelle coordinate della lettera di partenza;
-2. disegna la lettera intera — tutti i suoi anelli — sempre in quelle
-   coordinate.
-
-Il risultato e' `T_j(lettera ∩ regione_j)`. L'unione su tutti gli ossi e'
-l'assemblaggio rigido. Le regioni si costruiscono una volta sola su una
-griglia grossolana, unendo le caselle per righe, e si **allargano di una casella**
-l'una dentro l'altra: e' la sovrapposizione che fa sparire il giunto.
-
-**Qui lo stesso carattere da entrambe le parti diventa portante, non solo una
-scelta di gusto.** A fine corsa ogni pezzo e' la stecca della lettera di
-partenza appoggiata rigidamente sul tratto corrispondente di quella d'arrivo:
-con lo stesso carattere — stesso peso d'asta, stesse grazie — quella stecca *e'*
-gia' quasi il pezzo giusto, e per arrivare alla lettera esatta basta una
-dissolvenza brevissima in coda. Con due caratteri diversi la stecca arriva col
-peso sbagliato e la dissolvenza dovrebbe essere lunga, cioe' visibile.
+In coda si passa alla lettera d'arrivo vera (`consegnaBarre`): l'assemblaggio la
+sfiora ma non la centra, perche' porta le grazie della lettera di partenza.
 
 ## Cosa manca
 
-1. **L'assemblaggio rigido** descritto qui sopra, che e' il lavoro grosso
-   rimasto: e' quello che toglie l'effetto liquido e con lui la fascia
-   illeggibile fra `p` 0.30 e 0.40.
+1. **Il centro della corsa** (`p` fra 0.40 e 0.70) e' un accatastamento di
+   schegge dure: le regioni si sovrappongono troppo quando le barre
+   convergono, e ogni barra porta un pezzo di lettera intera. Serve che ogni
+   regione porti solo la propria asta, non tutto quello che le passa vicino.
+   Il carattere del movimento pero' e' quello giusto, e non e' piu' liquido.
 2. **L'aggancio alla pagina** non e' scritto: il binario di scroll, lo sticky
    della sezione, la consegna dal canvas dell'inchiostro, la comparsa della
    sezione al 100% e il pannello bianco che cade via dalle immagini.

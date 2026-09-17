@@ -176,12 +176,33 @@ sfaldata e non serve nemmeno guardarla.
 
 ---
 
-## Cosa manca
+## Il difetto che resta, e il numero con cui misurarlo
 
-1. **Il terzo centrale della corsa** (`p` fra 0.30 e 0.50) ha ancora lettere che
-   si chiudono in macchie: i controinterni escono dal bordo esterno e il
-   riempimento pari-dispari si inverte. Gli estremi e tutto il resto della corsa
-   sono puliti.
+Nel terzo centrale della corsa alcune lettere si chiudono in macchie nere. La
+causa non e' piu' un'impressione: il contorno **si attraversa da solo**, e
+`prova/singola.html` lo conta. Dove un osso ruota di 90 gradi e quello accanto
+sta fermo, la fascia di lettera in mezzo si torce, il contorno si ripiega, e il
+riempimento pari-dispari chiude il ripiegamento in nero.
+
+Le ossa, invece, fanno gia' la cosa giusta: nel disegno a filo si vede la `A`
+che ribalta le diagonali nella `V`, la `H` che piega le aste nella `V` centrale
+della `M`, la `F` che alza il braccio nella diagonale della `N`. Il problema e'
+solo la pelle che le segue.
+
+**Misurare prima di scegliere.** Sulle quattro coppie di prova
+(`A>V`, `R>O`, `H>M`, `F>N`, a cinque progressioni):
+
+| Variante | Auto-attraversamenti |
+|---|---|
+| allineamento sulle sagome ferme | 60 |
+| **allineamento dopo lo scheletro** | **40** |
+| media degli angoli invece che delle posizioni | 55 |
+
+La seconda riga e' quella in vigore. La terza sembrava la mossa da manuale —
+mediare le rotazioni in scala logaritmica invece delle posizioni ruotate — e coi
+perni degli ossi lontani fra loro sposta piu' di quanto raddrizzi. La prima, a
+occhio su un fotogramma, sembrava migliore della seconda: non lo era. Su questo
+difetto l'occhio sbaglia e il conteggio no.
 2. **L'aggancio alla pagina** non è scritto: il binario di scroll, lo sticky
    della sezione, la consegna dal canvas dell'inchiostro all'SVG, la comparsa
    della sezione al 100% e il pannello bianco che cade via dalle immagini.

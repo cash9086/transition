@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>cape-fold — una lettera alla volta</title>
+<style>
+  @font-face{font-family:'Bodoni Moda';font-weight:400;src:url(font/bodoni.woff2) format('woff2');font-display:block}
+  @font-face{font-family:'Cormorant';font-weight:300;src:url(font/cormorant.woff2) format('woff2');font-display:block}
+  html,body{margin:0;background:#fff;font-family:monospace}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="../cape-fold.js"></script>
+<script>
+/* Il contorno A FILO, non riempito: un contorno che si attraversa da
+   riempito e' una macchia nera e non si capisce niente, a filo si vede
+   esattamente dove passa e dove si incrocia.
+   Sopra, le ossa: in rosso quelle in avanti, in blu quelle all'indietro. */
+(async function(){
+  await document.fonts.load('300 200px Cormorant');
+  await document.fonts.load('400 200px "Bodoni Moda"');
+  await document.fonts.ready;
+
+  const COPPIE = [[0,'A>V'], [1,'R>O'], [9,'H>M'], [6,'F>N']];
+  const PASSI  = [0, 0.25, 0.5, 0.75, 1];
+  const CELLA = 250, CORPO = 170;
+
+  const mod = capeFold.costruisci({
+    da:{testo:'ART & FASHION', famiglia:'Cormorant', peso:300, spaziatura:0.02},
+    a: {testo:'VOID AND MARK', famiglia:'"Bodoni Moda"', peso:400, spaziatura:-0.035}
+  });
+
+  const cnv=document.getElementById('c'), ctx=cnv.getContext('2d');
+  cnv.width=CELLA*PASSI.length; cnv.height=CELLA*COPPIE.length;
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,cnv.width,cnv.height);
+
+  const core = capeFold._core;
+  const incroci = [];
+
+  COPPIE.forEach(([idx,nome],r)=>{
+    const po = mod.posti[idx];
+    PASSI.forEach((p,k)=>{
+      const e = mod.ease(p);
+      const ox = CELLA*k + 45, oy = CELLA*r + CELLA*0.72;
+
+      /* il contorno, a filo */
+      po.anelli.forEach(an=>{
+        if(!an.ganci) return;
+        core.applicaPelle(an.ganci, an.src, po.tratti, e, an.buf);
+        let pts;
+        if(an.ganci2){
+          core.applicaPelle(an.ganci2, an.dst, po.tratti2, 1-e, an.buf2);
+          pts = an.buf.map((q,i)=>[q[0]+(an.buf2[i][0]-q[0])*e, q[1]+(an.buf2[i][1]-q[1])*e]);
+        } else pts = an.buf;
+
+        ctx.strokeStyle='rgba(0,0,0,.9)'; ctx.lineWidth=1;
+        ctx.beginPath();
+        pts.forEach((q,i)=>{ const x=ox+q[0]*CORPO, y=oy+q[1]*CORPO; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+        ctx.closePath(); ctx.stroke();
+
+        /* quante volte il contorno si attraversa: il numero che conta */
+        let n=0;
+        for(let i=0;i<pts.length;i++) for(let j=i+2;j<pts.length;j++){
+          if(i===0 && j===pts.length-1) continue;
+          if(taglia(pts[i],pts[(i+1)%pts.length],pts[j],pts[(j+1)%pts.length])) n++;
+        }
+        incroci.push({nome,p,anello:an.collassa?'collassa':'pieno',n});
+      });
+
+      /* le ossa */
+      po.tratti && po.tratti.forEach(tr=>{
+        const m=tr.mot, ca=Math.cos(m.ang*e), sa=Math.sin(m.ang*e);
+        const sc=1+(m.sc-1)*e, cx=m.ax+(m.bx-m.ax)*e, cy=m.ay+(m.by-m.ay)*e;
+        ctx.strokeStyle='rgba(220,0,0,.75)'; ctx.lineWidth=2;
+        ctx.beginPath();
+        tr.A.forEach((q,i)=>{
+          const rx=q[0]-m.ax, ry=q[1]-m.ay;
+          const x=ox+(cx+sc*(rx*ca-ry*sa))*CORPO, y=oy+(cy+sc*(rx*sa+ry*ca))*CORPO;
+          i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+        });
+        ctx.stroke();
+      });
+
+      ctx.fillStyle='#08c'; ctx.font='11px monospace';
+      ctx.fillText(nome+'  p='+p, CELLA*k+8, CELLA*r+16);
+    });
+  });
+
+  function taglia(a,b,c,d){
+    const s=(p,q,r)=>Math.sign((q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]));
+    return s(a,b,c)!==s(a,b,d) && s(c,d,a)!==s(c,d,b);
+  }
+
+  /* riassunto: solo dove ci sono incroci */
+  window.__diag = incroci.filter(x=>x.n>0);
+  window.__pronto = true;
+})();
+</script>
+</body>
+</html>

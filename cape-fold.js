@@ -104,6 +104,11 @@
        unico e' portante e non decorativo. */
     consegnaBarre: 0.97,
 
+    /* A quale frazione della propria lunghezza si riduce una riga che non ha
+       partner. Non zero: a zero la trasformazione degenera e il ritaglio
+       sparisce di scatto invece di chiudersi. */
+    scomparsa: 0.006,
+
     /* ——— la qualita' del tracciamento ———————————————————————————
        Questi tre numeri vanno letti insieme, e sono tarati su un didone,
        cioe' sul caso peggiore. In un carattere a contrasto estremo — Bodoni,
@@ -704,52 +709,40 @@
     return out;
   }
 
-  /* ——— pareggiare il numero di barre ——————————————————————————————
-     Due lettere non hanno lo stesso numero di tratti: la R ne ha tre, la O
-     uno. Accoppiandoli per indice, i tre pezzi della R finiscono tutti sulla
-     stessa barra della O — e con le barre ammucchiate una O non viene fuori.
+  /* ——— quando i conti non tornano ————————————————————————————————
+     Una lettera ha le righe che ha: la H ne ha tre — due verticali e una
+     orizzontale — e non se ne spezza nessuna. Spezzare una riga in due per far
+     tornare i conti col numero di righe dell'altra lettera e' esattamente cio'
+     che non si deve fare: l'asta della H si apriva in due tronconi e la lettera
+     smetteva di essere una lettera.
 
-     Invece di scegliere quale pezzo sacrificare, si SPEZZA la barra piu' lunga
-     della lettera che ne ha meno, finche' i conti tornano. L'anello della O
-     diventa tre archi e ognuno riceve un pezzo di R. Nessun tratto resta senza
-     destinazione e nessuna destinazione riceve due tratti.
-
-     Si spezza sempre la piu' lunga: e' l'unico criterio che non dipende
-     dall'ordine in cui sono scritte le tabelle, quindi spezzare due volte da'
-     lo stesso risultato di spezzarne una lunga il doppio. */
-  function spezza(tratto) {
-    var i, L = 0, acc = [0];
-    for (i = 1; i < tratto.length; i++) {
-      L += Math.hypot(tratto[i][0] - tratto[i - 1][0], tratto[i][1] - tratto[i - 1][1]);
-      acc.push(L);
-    }
-    if (L <= 0) return [tratto, tratto];
-    var meta = L / 2, k = 1;
-    while (k < acc.length - 1 && acc[k] < meta) k++;
-    var t = (meta - acc[k - 1]) / ((acc[k] - acc[k - 1]) || 1);
-    var mezzo = [lerp(tratto[k - 1][0], tratto[k][0], t),
-                 lerp(tratto[k - 1][1], tratto[k][1], t)];
-    var a = tratto.slice(0, k).concat([mezzo]);
-    var b = [mezzo].concat(tratto.slice(k));
-    return [campiona(a, C.campioniTratto, false), campiona(b, C.campioniTratto, false)];
+     Quando una riga non ha partner, la regola e' la stessa di sempre portata
+     fino in fondo: SI ACCORCIA. Fino a sparire. Il trattino della A che diventa
+     T non ha dove andare, quindi ruota sull'asta della T e si accorcia a
+     niente — che e' poi come era stata descritta la piega fin dall'inizio.
+     E al contrario: una riga che nella lettera d'arrivo c'e' e in quella di
+     partenza no nasce allungandosi da zero. */
+  function barraCorta(B, frazione) {
+    var a0 = B[0], a1 = B[B.length - 1];
+    var ux = a1[0] - a0[0], uy = a1[1] - a0[1];
+    var L = Math.hypot(ux, uy) || 1e-6;
+    ux /= L; uy /= L;
+    var cx = 0, cy = 0, k;
+    for (k = 0; k < B.length; k++) { cx += B[k][0]; cy += B[k][1]; }
+    cx /= B.length; cy /= B.length;
+    var h = L * frazione / 2;
+    return campiona([[cx - ux * h, cy - uy * h], [cx + ux * h, cy + uy * h]],
+                    C.campioniTratto, false);
   }
 
-  function lunghezza(t) {
-    var L = 0, i;
-    for (i = 1; i < t.length; i++) L += Math.hypot(t[i][0] - t[i - 1][0], t[i][1] - t[i - 1][1]);
-    return L;
-  }
-
-  function pareggia(sa, sb) {
-    var A = sa.slice(), B = sb.slice(), guardia = 0;
-    while (A.length !== B.length && guardia++ < 12) {
-      var corto = A.length < B.length ? A : B;
-      var piu = 0, i;
-      for (i = 1; i < corto.length; i++) if (lunghezza(corto[i]) > lunghezza(corto[piu])) piu = i;
-      var due = spezza(corto[piu]);
-      corto.splice(piu, 1, due[0], due[1]);
+  /* Fra le righe che un partner ce l'hanno, quella a cui somiglia di piu'. */
+  function piuVicina(riga, righe, quante) {
+    var best = 0, bc = Infinity, j;
+    for (j = 0; j < quante; j++) {
+      var v = costo(riga, righe[j]);
+      if (v < bc) { bc = v; best = j; }
     }
-    return [A, B];
+    return best;
   }
 
   /* Accoppia i tratti di partenza con quelli d'arrivo.
@@ -1017,19 +1010,45 @@
         skA  = [[[ba.x, ba.y + ba.h], [ba.x + ba.w, ba.y]]];
       }
 
-      /* Pareggiati i conti, l'accoppiamento e' per indice e basta: le tabelle
-         SCHELETRI sono scritte in ordine d'importanza, e le barre nate da uno
-         spezzamento restano nella posizione della barra da cui vengono. */
-      var paio = pareggia(skDa, skA);
-      skDa = paio[0]; skA = paio[1];
+      /* Accoppiamento per indice: le tabelle SCHELETRI sono scritte in ordine
+         d'importanza — prima l'asta portante, poi il resto — e l'indice porta
+         dentro quell'ordine. E' cosi' che la sinistra della A trova l'asta
+         della T e la destra ne trova il trattino. */
+      var comuni = Math.min(skDa.length, skA.length), s;
+
       posto.tratti = [];
-      for (var s = 0; s < skDa.length; s++) {
+      for (s = 0; s < comuni; s++) {
         posto.tratti.push({ A: skDa[s], mot: motoBarra(skDa[s], skA[s]) });
       }
+      /* Le righe di partenza in piu': ruotano sulla riga d'arrivo a cui
+         somigliano di piu' e si accorciano fino a sparire. */
+      for (s = comuni; s < skDa.length; s++) {
+        var dove = piuVicina(skDa[s], skDa, comuni);
+        posto.tratti.push({
+          A: skDa[s],
+          mot: motoBarra(skDa[s], barraCorta(skA[dove], C.scomparsa))
+        });
+      }
 
-      /* La superficie della lettera spartita fra le barre, e la lettera
-         intera: in disegno la seconda si ritaglia con la prima. */
+      /* Le righe d'arrivo in piu' non hanno inchiostro da portare nella
+         lettera di partenza: nascono dalla lettera D'ARRIVO, allungandosi da
+         niente. Il loro moto e' letto al contrario e percorso al contrario. */
+      posto.nate = [];
+      for (s = comuni; s < skA.length; s++) {
+        var da = piuVicina(skA[s], skA, comuni);
+        posto.nate.push({
+          indice: s,
+          mot: motoBarra(skA[s], barraCorta(skDa[da], C.scomparsa))
+        });
+      }
+
+      /* La superficie di ciascuna lettera spartita fra le sue righe. In
+         disegno la lettera intera si ritaglia con la regione della riga. */
       posto.regioni = regioni(posto.tratti, tDa.box, C.griglia);
+      if (posto.nate.length) {
+        var barreA = skA.map(function (r) { return { A: r }; });
+        posto.regioniA = regioni(barreA, tA.box, C.griglia);
+      }
       posto.sagomaDa = tDa.anelli;
       posto.sagomaA  = tA.anelli;
 
@@ -1150,6 +1169,36 @@
 
         ctx.beginPath();
         po.sagomaDa.forEach(function (an) {
+          traccia1(ctx, an, function (pt) { return pt; });
+        });
+        ctx.fill();
+        ctx.restore();
+      });
+
+      /* Le righe che nella lettera d'arrivo ci sono e in quella di partenza
+         no: non hanno inchiostro da portare, quindi il loro pezzo viene dalla
+         lettera D'ARRIVO e il loro moto si legge a rovescio. A piega zero sono
+         accorciate a niente e non si vedono; a piega uno sono al loro posto,
+         intere. */
+      (po.nate || []).forEach(function (nb) {
+        var m2 = nb.mot, tb = 1 - e;
+        var kb = 1 + (m2.k - 1) * tb, db = kb - 1;
+
+        ctx.save();
+        ctx.translate(ox, oy);
+        ctx.scale(corpo, corpo);
+        ctx.translate(lerp(m2.ax, m2.bx, tb), lerp(m2.ay, m2.by, tb));
+        ctx.rotate(m2.ang * tb);
+        ctx.transform(1 + db * m2.ux * m2.ux, db * m2.ux * m2.uy,
+                      db * m2.ux * m2.uy,     1 + db * m2.uy * m2.uy, 0, 0);
+        ctx.translate(-m2.ax, -m2.ay);
+
+        ctx.beginPath();
+        po.regioniA[nb.indice].forEach(function (r) { ctx.rect(r[0], r[1], r[2], r[3]); });
+        ctx.clip();
+
+        ctx.beginPath();
+        po.sagomaA.forEach(function (an) {
           traccia1(ctx, an, function (pt) { return pt; });
         });
         ctx.fill();

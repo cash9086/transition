@@ -242,9 +242,71 @@ node scatta-confronto.js            # il conteggio degli incroci, tre configuraz
   dell'altro, senza nessun gonfiore in mezzo. Guardando i fotogrammi sembrava
   vero.
 
+## Il criterio vero: dritte, e non spezzate
+
+Le rette della lettera devono restare **rette** per tutta la corsa, e i pezzi non
+devono **spezzarsi**. Se un'asta si incurva, la piega non si legge come una
+piega: si legge come liquido. Questo non e' un desiderata estetico da inseguire
+con le manopole — e' il criterio di accettazione, e decide l'architettura.
+
+**Una pelle continua non puo' soddisfarlo, e non e' questione di taratura.** Se
+ogni punto riceve una media pesata delle trasformazioni dei suoi ossi, e due
+ossi vicini ruotano di angoli diversi, la media curva per forza cio' che sta in
+mezzo: e' aritmetica, non un difetto da correggere. Tutto quello che si puo'
+fare e' scegliere *quanto* curva. Ed e' il motivo per cui ogni variante provata
+qui sopra — pesi su due ossi, pesi su tutti, media delle posizioni, media degli
+angoli — dava lo stesso fotogramma: cambiavano la forma della curva, non il
+fatto che ci fosse.
+
+Quello che serve e' un **metro da falegname**: ogni pezzo di lettera resta
+rigido, e i pezzi ruotano l'uno rispetto all'altro. Una trasformazione rigida
+manda rette in rette, sempre. I giunti non si spezzano perche' i pezzi si
+sovrappongono invece di stirarsi, e il riempimento non-zero li fonde in un
+solido unico.
+
+### Il primo taglio rigido, e perche' e' sbagliato
+
+Tentato: etichettare ogni punto del contorno con l'osso piu' vicino, spezzare il
+contorno nei tratti a etichetta costante, e chiudere ogni tratto con una corda
+fra il suo primo e il suo ultimo punto.
+
+Non funziona, e si vede subito: gia' a `p=0` i controinterni si tappano di nero.
+La corda non e' un taglio nella lettera — passa attraverso il vuoto. Sui
+contorni interni, il triangolo della `A` o l'occhiello della `O`, la corda
+racchiude proprio il vuoto e lo riempie.
+
+**Un pezzo rigido non si ottiene ritagliando il BORDO: si ottiene ritagliando la
+SUPERFICIE.** Il codice di quel tentativo non e' rimasto in albero; se serve
+rivederlo, e' la differenza fra `pezzi()` che taglia una sequenza di punti e
+quello che andrebbe fatto qui sotto.
+
+### La costruzione giusta, da fare
+
+Per ogni osso `j`, con il contesto sotto la trasformazione `T_j(t)`:
+
+1. ritaglia (`clip`) alla **regione** dei punti di partenza piu' vicini a `j`,
+   espressa nelle coordinate della lettera di partenza;
+2. disegna la lettera intera — tutti i suoi anelli — sempre in quelle
+   coordinate.
+
+Il risultato e' `T_j(lettera ∩ regione_j)`. L'unione su tutti gli ossi e'
+l'assemblaggio rigido. Le regioni si costruiscono una volta sola su una
+griglia grossolana, unendo le caselle per righe, e si **allargano di una casella**
+l'una dentro l'altra: e' la sovrapposizione che fa sparire il giunto.
+
+**Qui lo stesso carattere da entrambe le parti diventa portante, non solo una
+scelta di gusto.** A fine corsa ogni pezzo e' la stecca della lettera di
+partenza appoggiata rigidamente sul tratto corrispondente di quella d'arrivo:
+con lo stesso carattere — stesso peso d'asta, stesse grazie — quella stecca *e'*
+gia' quasi il pezzo giusto, e per arrivare alla lettera esatta basta una
+dissolvenza brevissima in coda. Con due caratteri diversi la stecca arriva col
+peso sbagliato e la dissolvenza dovrebbe essere lunga, cioe' visibile.
+
 ## Cosa manca
 
-1. **La fascia `p` 0.30-0.40**, dove il contorno si ripiega ancora.
+1. **L'assemblaggio rigido** descritto qui sopra, che e' il lavoro grosso
+   rimasto: e' quello che toglie l'effetto liquido e con lui la fascia
+   illeggibile fra `p` 0.30 e 0.40.
 2. **L'aggancio alla pagina** non e' scritto: il binario di scroll, lo sticky
    della sezione, la consegna dal canvas dell'inchiostro, la comparsa della
    sezione al 100% e il pannello bianco che cade via dalle immagini.

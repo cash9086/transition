@@ -33,8 +33,8 @@
   const Q = new URLSearchParams(location.search);
   const DA = { testo:'ART & FASHION', famiglia:Q.get('da')||'Cormorant',
                peso:+(Q.get('pesoDa')||300), spaziatura:0.02 };
-  const A  = { testo:'VOID AND MARK', famiglia:Q.get('a')||'"Bodoni Moda"',
-               peso:+(Q.get('pesoA')||400), spaziatura:-0.035 };
+  const A  = { testo:'VOID AND MARK', famiglia:Q.get('a')||'Cormorant',
+               peso:+(Q.get('pesoA')||300), spaziatura:-0.035 };
 
   /* Se un font non c'e', il banco lo dice invece di disegnare con un
      ripiego e lasciarmi giudicare sagome sbagliate. */

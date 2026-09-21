@@ -837,6 +837,24 @@
     if (sezione) return sezione;
     sezione = create(opts || {});
     global.capeDust = sezione;
+
+    /* Questa sezione tocca roba di altri: ferma il rig, spegne una foto che
+       non e' sua, scrive il colore del cursore. Sono accordi veri e invisibili
+       — rinomini una classe e qualcosa smette di funzionare in silenzio.
+       Qui vengono dichiarati, cosi' capePatti() in console li elenca insieme
+       a tutti gli altri e segnala quelli rimasti su una gamba sola. */
+    if (global.capePatti) {
+      global.capePatti.dichiara("cape-dust — la foto in polvere", {
+        scrivo: [
+          ["is-fermo", I.rig, "tiene ferma l'ultima slide mentre la sezione e' incollata"],
+          [I.velo, I.rigTrack, "quanto il contenuto della slide e' ancora visibile"],
+          [I.fotoOff, I.foto, "spegne la foto vera: da qui in poi la disegna il canvas"],
+          ["data-hdr", I.stick, "dice alla barra se sotto c'e' il nero o la luce"],
+          [I.cursoreVar, I.cursore, "il colore del cursore sopra la simulazione"],
+          ["window.capeDust", "", "progresso della sezione, per chi volesse leggerlo"]
+        ]
+      });
+    }
     return sezione;
   }
 

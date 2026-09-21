@@ -145,22 +145,49 @@
                     aveva nella foto al bianco.
          punto      lato del punto in pixel css.
          crescita   quanto al massimo puo' ingrandirsi un punto che passa
-                    vicino alla camera. Tenuto basso apposta: devono restare
-                    pixel, non diventare palle. */
+                    vicino alla camera. Tenuto basso, e PROVATO: portandolo
+                    a 2.4 (con bokeh a 4.6) il campo diventa piu' morbido e
+                    piu' uniforme, e si perde proprio la cosa che lo fa
+                    sembrare un gioiello — lo stacco fra i pochi nitidi e i
+                    molti sfocati. Piu' sfocato non e' piu' ricco: e' piu'
+                    impastato. */
       sbianca:      0.30,
       punto:        1.7,
       crescita:     1.75,
 
       /* ——— lo scintillio ————————————————————————————————————————
          quota      frazione di pixel che scintilla. Il resto sta acceso e
-                    basta. Tenerla bassa e' cio' che fa sembrare un cielo
-                    invece che rumore.
-         forza      quanto piu' luminoso diventa uno al culmine del lampo.
-         secchezza  quanto e' breve il lampo: esponente alto = fiammata corta
-                    e netta, come un riflesso che passa. */
-      quota:        0.08,
-      forza:        2.6,
-      secchezza:    16.0,
+                    basta. Bassa apposta: un lampo vale in proporzione a
+                    quanto e' raro. Se lampeggia tutto, non lampeggia niente.
+         forza      quanto piu' luminoso diventa uno al culmine. Alto: deve
+                    BRUCIARE, non accendersi educatamente.
+         secchezza  quanto e' breve il lampo. 34 e' una fiammata di un
+                    istante, come il riflesso che scocca quando una pietra
+                    gira di un grado. Un lampo lungo sembra una lucina che
+                    pulsa; un lampo corto sembra una sfaccettatura. */
+      quota:        0.055,
+      forza:        9.0,
+      secchezza:    34.0,
+
+      /* ——— l'ottica del gioielliere ————————————————————————————
+         fuoco        dove sta il piano a fuoco, in z. 0 = il piano della
+                      fotografia, cioe' il pixel e' nitido nell'istante in
+                      cui si stacca e sfuoca solo viaggiando.
+         profondita   quanto ci si allontana da quel piano prima di essere
+                      completamente impastati. Piccola = poca profondita' di
+                      campo = ottica luminosa = macro di gioielleria.
+         bokeh        di quante volte si allarga una particella del tutto
+                      fuori fuoco. La sua luce si spegne in proporzione:
+                      stessa energia, piu' area.
+         flare        quanto e' lungo il raggio della croce, in pixel css.
+         iride        quanta dominante di colore prende un lampo. Poca: e'
+                      un accenno, non un arcobaleno. Sopra 0.3 sembra un
+                      difetto dello schermo. */
+      fuoco:        0,
+      profondita:   380,
+      bokeh:        3.4,
+      flare:        34,
+      iride:        0.17,
 
       /* ——— la salita della luce ————————————————————————————————
          Nell'ultimo tratto tutte le stelle insieme si accendono. Serve
@@ -272,7 +299,9 @@
     "uniform float uCorsa, uCaso, uVel, uRadiale, uFondo, uCamera, uDeriva;",
     "uniform float uSbianca, uPunto, uCrescita;",
     "uniform float uQuota, uForza, uSecchezza, uGuadagno;",
+    "uniform float uFuoco, uProfondita, uBokeh, uFlare, uIride;",
     "out vec4 vCol;",
+    "out vec3 vForma;",   /* x = raggio del disco dentro lo sprite, y = sfuoco, z = lampo */
 
     /* Direzione della spinta: un po' via dal centro della foto, un po' a caso.
        La componente in profondita' e' simmetrica, quindi meta' dei pixel
@@ -302,7 +331,7 @@
     "  vec2 cuv = (vec2(c) + 0.5) / uGrid;",
     "  vec3 col = texture(uTex, uCover.xy * cuv + uCover.zw).rgb;",
     "  float tau = uProg - distacco(col, c, uGamma, uCorsa, uCaso);",
-    "  if (tau <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec4(0.0); return; }",
+    "  if (tau <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec4(0.0); vForma = vec3(0.0); return; }",
 
     /* origine: il posto esatto che quel pixel occupava sullo schermo */
     "  vec2 ori = uRect.xy + cuv * uRect.zw;",
@@ -333,7 +362,7 @@
     "    vec3 dC = normalize(mix(dA, spinta(c, 4, fuga), uDeriva));",
     "    p = uno + dC * passo(c, 4) * (tau - n2);",
     "  }",
-    "  if (tau < nato) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec4(0.0); return; }",
+    "  if (tau < nato) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec4(0.0); vForma = vec3(0.0); return; }",
 
     /* La nuvola, oltre ad aprirsi, si sposta tutta insieme verso il centro
        dello schermo. E' una traslazione a velocita' costante — quindi sempre
@@ -349,30 +378,70 @@
     "  vec2 scr = vc + (p.xy - vc) * sc;",
     "  vec2 n = (scr / uRes) * 2.0 - 1.0;",
     "  gl_Position = vec4(n.x, -n.y, 0.0, 1.0);",
-    "  gl_PointSize = max(1.0, uPunto * uDpr * clamp(sc, 1.0, uCrescita));",
 
     /* il colore della foto che si perde nel bianco lungo il viaggio */
     "  float bianco = smoothstep(0.0, uSbianca, tau);",
     "  vec3 cc = mix(col, vec3(1.0), bianco);",
 
-    /* Varieta' di luce. Senza, centomila punti tutti della stessa forza non
-       sono un cielo: sono grana. Entra INSIEME al bianco, cosi' nell'istante
-       del distacco il pixel vale esattamente quello che valeva nella
-       fotografia e la cucitura col rettangolo resta invisibile; e' solo
-       allontanandosi che diventa una stella con una sua taglia. */
-    "  float taglia = mix(1.0, 0.06 + 2.30 * pow(dado(c, 60 + slot), 3.0), bianco);",
+    /* GAMMA DINAMICA. Quasi tutti quasi spenti, pochissimi accesi davvero:
+       l'elevamento alla quinta schiaccia la distribuzione in fondo. E' la
+       differenza fra un cielo e una retinatura — e fra un gioiello e un
+       brillantino. Se tutti i punti valgono uguale, il nero fra loro si
+       impasta di grigio e la scena diventa polverosa: il lusso sta nel nero
+       che resta nero, con pochi punti che bruciano.
+       Entra INSIEME al bianco, cosi' nell'istante del distacco il pixel vale
+       esattamente quello che valeva nella fotografia e la cucitura col
+       rettangolo resta invisibile. */
+    "  float taglia = mix(1.0, 0.02 + 3.20 * pow(dado(c, 60 + slot), 5.0), bianco);",
+
+    /* IL FUOCO. Un piano a fuoco, e tutto il resto che sfuoca allontanandosi
+       da li'. E' la cosa che dice "macro su gioielleria" invece di "sistema
+       di particelle": nelle foto dei gioielli meta' dell'inquadratura e'
+       impastata di bokeh e solo una lama sottile e' nitida. Il piano di fuoco
+       sta a z=0, cioe' dove stava la fotografia: al primo istante il pixel
+       che si stacca e' quindi perfettamente nitido, e sfuoca solo mentre
+       viaggia. Chi sfuoca si allarga e, a parita' di luce, si spegne: la
+       stessa energia spalmata su piu' area. */
+    "  float sfuoco = clamp(abs(p.z - uFuoco) / uProfondita, 0.0, 1.0);",
+    "  sfuoco *= sfuoco;",
+    "  float nucleo  = uPunto * uDpr * clamp(sc, 1.0, uCrescita);",
+    "  float largo   = nucleo * (1.0 + sfuoco * uBokeh);",
+    "  float attenua = 1.0 / (1.0 + sfuoco * uBokeh * 1.4);",
 
     /* lo scintillio va a orologio, non a scroll: da fermi il cielo resta
        vivo. Le posizioni restano funzione del solo progresso, quindi la
-       reversibilita' non si tocca — qui pulsa solo la luce. */
-    /* semi distanti fra loro: 1..4 sono le direzioni, 41..44 la profondita',
-       81..84 le velocita'. Due usi diversi che pescano lo stesso numero non
-       rompono niente, ma legano fra loro cose che devono restare slegate. */
+       reversibilita' non si tocca — qui pulsa solo la luce.
+       semi distanti fra loro: 1..4 sono le direzioni, 41..44 la profondita',
+       81..84 le velocita'. */
     "  float acceso = step(dado(c, 20 + slot), uQuota);",
     "  float ph = dado(c, 30 + slot) * 6.2831853;",
     "  float rt = 0.5 + 2.0 * dado(c, 50 + slot);",
-    "  float lampo = pow(max(0.0, sin(uTime * rt + ph)), uSecchezza);",
-    "  float luce = taglia * (1.0 + acceso * uForza * lampo) * uGuadagno;",
+    "  float lampo = acceso * pow(max(0.0, sin(uTime * rt + ph)), uSecchezza);",
+
+    /* La croce a quattro punte esce solo al culmine del lampo E solo su chi
+       e' a fuoco: un riflesso sfocato non ha punte, ha un alone. Questa
+       distinzione e' quasi tutto — punte su tutto quanto sembrerebbe un
+       filtro, punte solo sui nitidi sembra un obiettivo. */
+    "  float croce = lampo * (1.0 - sfuoco);",
+    "  float luce  = taglia * (1.0 + uForza * lampo) * uGuadagno;",
+
+    /* IL FUOCO DEL DIAMANTE. Il cristallo separa la luce: il lampo non e'
+       bianco, tira al freddo o all'oro secondo l'angolo. E' esattamente cio'
+       per cui uno strass si riconosce a colpo d'occhio da un puntino bianco.
+       Ogni particella ha la sua dominante, presa dalla stessa fase del suo
+       lampo, e la tinta compare solo mentre brilla. */
+    "  vec3 iride = vec3(1.0 + uIride * sin(ph * 1.7),",
+    "                    1.0 - uIride * 0.30,",
+    "                    1.0 + uIride * cos(ph * 2.3));",
+    "  cc = mix(cc, cc * iride, croce);",
+
+    /* Lo sprite si allarga quel tanto che basta a contenere le punte. Il
+       nucleo pero' resta della stessa misura sullo schermo, perche' il suo
+       raggio viene passato al frammento come FRAZIONE dello sprite: cosi' il
+       punto non "cresce" quando scocca il lampo, gli escono solo i raggi. */
+    "  float lato = max(largo * 1.6, croce * uFlare * uDpr);",
+    "  gl_PointSize = clamp(lato, 1.0, 110.0);",
+    "  vForma = vec3(0.5 * largo / max(lato, 1.0), sfuoco, croce);",
 
     /* si spegne chi passa troppo vicino alla camera (diventerebbe una
        macchia) e chi e' andato cosi' lontano da non contare piu' */
@@ -389,19 +458,46 @@
        ha scartato. Una dissolvenza qui sarebbe un buco nero grande un pixel,
        moltiplicato centomila volte lungo tutto il fronte dell'erosione. */
     "  float apre   = nato > 0.0 ? smoothstep(0.0, 0.02, tau - nato) : 1.0;",
-    "  vCol = vec4(cc * luce, apre * vicino * via);",
+    "  vCol = vec4(cc * luce * attenua, apre * vicino * via);",
     "}"
   ].join("\n");
 
   var FS_PUNTI = HEAD + [
     "in  vec4 vCol;",
+    "in  vec3 vForma;",     /* x = raggio del disco, y = sfuoco, z = lampo */
     "out vec4 oCol;",
     "void main(){",
-    /* tondo e con il bordo morbido: senza questo sono quadratini, e mille
-       quadratini si leggono come una retinatura, non come stelle */
     "  vec2 d = gl_PointCoord - 0.5;",
-    "  float a = smoothstep(0.25, 0.015, dot(d, d));",
-    "  oCol = vec4(vCol.rgb * vCol.a * a, vCol.a * a);",
+    "  float r = length(d);",
+
+    /* Il disco. Il bordo e' netto quando la particella e' a fuoco e diventa
+       una sfumatura piena quando e' fuori: e' il bokeh, e nasce qui — la
+       stessa particella, la stessa luce, solo il bordo che cambia. */
+    "  float bordo = vForma.x * mix(0.30, 1.0, vForma.y) + 0.002;",
+    "  float disco = 1.0 - smoothstep(max(vForma.x - bordo, 0.0), vForma.x + bordo * 0.3, r);",
+
+    /* Le quattro punte. Due esponenziali incrociati: uno larghissimo lungo
+       l'asse e strettissimo di traverso, l'altro al contrario. Il prodotto
+       fa un raggio sottile che si allunga e si spegne, non una riga con un
+       bordo. L'alone tiene insieme il centro, se no la croce sembra appesa
+       al vuoto. */
+    "  float px = exp(-abs(d.x) * 7.0) * exp(-abs(d.y) * 190.0);",
+    "  float py = exp(-abs(d.y) * 7.0) * exp(-abs(d.x) * 190.0);",
+    "  float alone = exp(-r * 13.0);",
+    "  float stella = (px + py + alone * 0.55) * vForma.z;",
+
+    "  float a = clamp(disco + stella, 0.0, 6.0);",
+    "  if (a <= 0.002) discard;",
+
+    /* Questa e' luce che si AGGIUNGE, non una vernice che copre. Quindi
+       l'opacita' non e' la copertura: e' quanta luce si porta dietro. Con
+       l'opacita' presa dalla copertura, una particella quasi spenta scriveva
+       il suo nero sopra il fondo e sullo schermo restava un puntino PIU'
+       SCURO della notte dietro — mille buchi invece di mille stelle. Legata
+       alla luce, una particella debole aggiunge poco e il fondo continua a
+       vedersi attraverso. */
+    "  vec3 e = vCol.rgb * vCol.a * a;",
+    "  oCol = vec4(e, clamp(max(max(e.r, e.g), e.b), 0.0, 1.0));",
     "}"
   ].join("\n");
 
@@ -692,6 +788,11 @@
       gl.uniform1f(u.uQuota, P.quota);
       gl.uniform1f(u.uForza, P.forza);
       gl.uniform1f(u.uSecchezza, P.secchezza);
+      gl.uniform1f(u.uFuoco, P.fuoco * dpr);
+      gl.uniform1f(u.uProfondita, P.profondita * dpr);
+      gl.uniform1f(u.uBokeh, P.bokeh);
+      gl.uniform1f(u.uFlare, P.flare);
+      gl.uniform1f(u.uIride, P.iride);
       gl.uniform1f(u.uGuadagno, 1 + P.guadagno * smoothstep(P.guadagnoDa, P.guadagnoA, p));
       gl.uniform2f(u.uDeriva2,
         (res[0] * 0.5 - (rect[0] + rect[2] * 0.5)) * P.centra,

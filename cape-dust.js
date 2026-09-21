@@ -82,17 +82,17 @@
        da qualunque lato: chi sale dallo studio-hero se la ritrova quando
        rientra nel rig, chi scende la ritrova nello studio-hero.
 
-       Non si anima con una transition messa nel CSS di pagina, e non per
-       gusto: il foglio della head avverte che sulla barra le transizioni
-       vanno lasciate stare, perche' una forma abbreviata scritta li'
-       sostituirebbe quella impostata nel Designer. Un'animazione WAAPI non
-       tocca affatto la proprieta' transition — e in piu' si inverte da dove
-       si trova, invece di ripartire da capo, se si cambia idea a meta'. */
-    barra:     ".header-cape",
-    barraMs:   620,
-    barraCurva:"cubic-bezier(.16,1,.3,1)",
-    barraVia:  0.02,    /* oltre questo progresso la barra se ne va */
-    barraTorna:0.985,   /* sotto la fine, torna giu' per la sezione dopo */
+       Si muove a SCROLL, con lo stesso numero che spegne le scritte della
+       slide, non a tempo: vedi muoviBarra(). Per questo qui non ci sono ne'
+       una durata ne' una curva — non c'e' niente che duri.
+       E per la stessa ragione non serve nessuna transition nel CSS di
+       pagina, che era la cosa da evitare: il foglio della head avverte che
+       sulla barra le transizioni vanno lasciate stare, perche' una forma
+       abbreviata scritta li' sostituirebbe quella impostata nel Designer. */
+    barra:       ".header-cape",
+    barraSalita: 110,     /* di quanto sale, in % della propria altezza */
+    barraTornaDa:0.93,    /* dove comincia a riscendere, per la sezione dopo */
+    barraTornaA: 0.99,
 
     /* ——— il cursore del sito ————————————————————————————————————
        Sopra questa sezione non c'e' un elemento da leggere: c'e' una
@@ -680,7 +680,7 @@
     var t0 = (global.performance && performance.now ? performance.now() : Date.now());
     var progresso = 0, statoVelo = -1, statoScuro = null, statoFermo = false, statoFoto = false;
     var fermata = 1, veloDa = I.veloDa, veloA = I.veloA;
-    var corsaBarra = null, barraSu = false;
+    var statoBarra = -1;
 
     /* ——— avvio ————————————————————————————————————————————————— */
 
@@ -927,53 +927,35 @@
 
     /* ——— la regia attorno alla sezione ————————————————————————— */
 
-    /* La barra si ritira in su e torna giu'. Una sola animazione, costruita
-       una volta e tenuta in pausa: per invertirla si cambia il verso di
-       lettura e si riparte da dove si era arrivati. Cancellarla e rifarne
-       un'altra al contrario, che e' la strada corta, fa saltare la barra
-       alla posizione di partenza ogni volta che si cambia idea a meta' —
-       e a meta' ci si cambia idea spesso, perche' questo lo comanda lo
-       scroll di una persona, non un timer. */
-    function ritiraBarra(via) {
-      if (!barra || via === barraSu) return;
-      barraSu = via;
-      /* Tornando, i click si riaccendono SUBITO; andandosene, si spengono
-         solo a salita finita (vedi onfinish). Il contrario — spegnerli al
-         primo fotogramma — lascia per mezzo secondo una barra che si vede
-         benissimo e non risponde: chi stava andando col mouse sul menu
-         proprio mentre parte la sezione clicca a vuoto. */
-      if (!via) barra.style.pointerEvents = "";
+    /* La barra si ritira in su, e la comanda LO STESSO NUMERO che spegne le
+       scritte della slide. Non e' un dettaglio di gusto: prima la barra
+       andava a orologio — mezzo secondo, sempre quello — mentre il testo
+       andava a scroll. Scorrendo piano la barra se n'era andata da un pezzo
+       e il testo era ancora li'; scorrendo veloce il contrario. Due cose che
+       escono di scena insieme devono dipendere dalla stessa grandezza, e qui
+       quella grandezza e' il progresso.
 
-      if (!barra.animate) {            /* browser senza WAAPI: niente moto */
-        barra.style.transform = via ? "translateY(-110%)" : "";
-        barra.style.opacity   = via ? "0" : "";
+       Cosi' e' anche una funzione pura del progresso come tutto il resto:
+       torna indietro esatta, non ha uno stato suo da sbagliare, e non serve
+       nessuna transition nel CSS di pagina — che era la cosa da evitare. */
+    function muoviBarra(via) {
+      if (!barra || Math.abs(via - statoBarra) < 0.004) return;
+      statoBarra = via;
+      if (via <= 0.001) {
+        /* a riposo non lasciamo niente addosso: la barra torna interamente
+           al suo foglio di stile, comprese eventuali trasformazioni sue */
+        barra.style.removeProperty("transform");
+        barra.style.removeProperty("opacity");
+        barra.style.removeProperty("pointer-events");
         return;
       }
-      if (!corsaBarra) {
-        corsaBarra = barra.animate(
-          [{ transform: "translateY(0)", opacity: 1 },
-           { transform: "translateY(-110%)", opacity: 0 }],
-          { duration: I.barraMs, easing: I.barraCurva, fill: "both" }
-        );
-        corsaBarra.pause();
-        try { corsaBarra.currentTime = 0; } catch (e) {}
-        /* Tornata giu', l'animazione si toglie di mezzo. Con fill:'both' una
-           corsa finita continua a imporre il suo primo fotogramma, e da li'
-           in poi qualunque transform messo sulla barra nel Designer sarebbe
-           scavalcato da noi — un guasto che si manifesta mesi dopo, altrove,
-           e che nessuno verrebbe a cercare qui. */
-        corsaBarra.onfinish = function () {
-          if (!corsaBarra) return;
-          if (corsaBarra.playbackRate < 0) {
-            try { corsaBarra.cancel(); } catch (e) {}
-            corsaBarra = null;
-          } else if (barra) {
-            barra.style.pointerEvents = "none";
-          }
-        };
-      }
-      corsaBarra.playbackRate = via ? 1 : -1;
-      corsaBarra.play();
+      barra.style.transform = "translateY(" + (-I.barraSalita * via).toFixed(2) + "%)";
+      barra.style.opacity = (1 - via).toFixed(3);
+      /* I click si spengono solo quando se n'e' andata davvero. Spegnerli al
+         primo fotogramma lascerebbe una barra che si vede benissimo e non
+         risponde: chi stava andando col mouse sul menu proprio mentre parte
+         la sezione clicca a vuoto. */
+      barra.style.pointerEvents = via > 0.85 ? "none" : "";
     }
 
     function stato() {
@@ -998,17 +980,22 @@
         img.classList.toggle(I.fotoOff, copre);
       }
 
+      /* Un numero solo per tutte e due: quanto la slide se n'e' andata. */
+      var esce = smoothstep(veloDa, veloA, progresso);
+
       if (rigTrack) {
-        var v = 1 - smoothstep(veloDa, veloA, progresso);
+        var v = 1 - esce;
         if (Math.abs(v - statoVelo) >= 0.004) {
           statoVelo = v;
           rigTrack.style.setProperty(I.velo, v.toFixed(3));
         }
       }
 
-      /* Dentro la sezione la barra non c'e'. Fuori — sopra o sotto, non
-         importa da che parte si arriva — c'e'. */
-      ritiraBarra(progresso > I.barraVia && progresso < I.barraTorna);
+      /* La barra esce insieme alle scritte e rientra in fondo, per la
+         sezione dopo. Risalendo dal basso la stessa formula la riporta su e
+         poi giu' da sola: non c'e' un "verso" scritto da nessuna parte,
+         c'e' solo dove sei. */
+      muoviBarra(esce * (1 - smoothstep(I.barraTornaDa, I.barraTornaA, progresso)));
 
       /* L'header si ridipinge leggendo il fondo sotto di se', e qui sotto non
          c'e' niente di opaco da leggere: glielo diciamo noi. */
@@ -1026,7 +1013,7 @@
       if (statoFermo) { statoFermo = false; rig && rig.classList.remove(I.fermo); }
       if (statoFoto)  { statoFoto = false;  img && img.classList.remove(I.fotoOff); }
       if (statoScuro !== null) { statoScuro = null; stick.removeAttribute("data-hdr"); }
-      ritiraBarra(false);
+      muoviBarra(0);
       if (rigTrack && statoVelo !== -1) { statoVelo = -1; rigTrack.style.removeProperty(I.velo); }
       if (cursore) cursore.style.removeProperty(I.cursoreVar);
     }
@@ -1088,8 +1075,8 @@
       destroy: function () {
         spento = true;
         libera();
-        if (corsaBarra) { try { corsaBarra.cancel(); } catch (e) {} corsaBarra = null; }
-        if (barra) { barra.style.pointerEvents = ""; }
+        statoBarra = -1;
+        muoviBarra(0);
         global.removeEventListener("resize", suResize);
         if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
       }
@@ -1117,7 +1104,7 @@
           [I.velo, I.rigTrack, "quanto il contenuto della slide e' ancora visibile"],
           [I.fotoOff, I.foto, "spegne la foto vera: da qui in poi la disegna il canvas"],
           ["data-hdr", I.stick, "dice alla barra se sotto c'e' il nero o la luce"],
-          ["transform", I.barra, "la barra si ritira in su dentro la sezione (animazione WAAPI, non transition)"],
+          ["transform", I.barra, "la barra si ritira in su, a scroll, insieme alle scritte della slide"],
           [I.cursoreVar, I.cursore, "il colore del cursore sopra la simulazione"],
           ["window.capeDust", "", "progresso della sezione, per chi volesse leggerlo"]
         ],

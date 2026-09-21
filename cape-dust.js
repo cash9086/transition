@@ -156,18 +156,38 @@
       crescita:     1.75,
 
       /* ——— lo scintillio ————————————————————————————————————————
-         quota      frazione di pixel che scintilla. Il resto sta acceso e
-                    basta. Bassa apposta: un lampo vale in proporzione a
-                    quanto e' raro. Se lampeggia tutto, non lampeggia niente.
-         forza      quanto piu' luminoso diventa uno al culmine. Alto: deve
-                    BRUCIARE, non accendersi educatamente.
-         secchezza  quanto e' breve il lampo. 34 e' una fiammata di un
-                    istante, come il riflesso che scocca quando una pietra
-                    gira di un grado. Un lampo lungo sembra una lucina che
-                    pulsa; un lampo corto sembra una sfaccettatura. */
-      quota:        0.055,
-      forza:        9.0,
-      secchezza:    34.0,
+         Le tre manopole sono separate apposta, perche' "troppo scintillio"
+         non vuol dire mai una cosa sola: puo' voler dire troppi, o troppo
+         grossi, o troppo frenetici, e si curano in tre posti diversi.
+
+         quota        QUANTI. Frazione di pixel che scintilla; il resto sta
+                      acceso e basta. Un lampo vale in proporzione a quanto
+                      e' raro: se lampeggia tutto, non lampeggia niente.
+         forza        QUANTO FORTE al culmine. Non alzarla per farli notare
+                      di piu': un culmine troppo alto allarga l'alone e i
+                      punti sembrano palle.
+         secchezza    che FORMA ha il lampo nel tempo. Esponente alto = sale
+                      e scende di colpo. Da solo non decide la velocita':
+                      quella e' il ritmo qui sotto.
+         ritmo        QUANTO SPESSO, in radianti al secondo. 0.16 + 0.45 di
+                      variazione vuol dire un giro ogni 10-40 secondi: una
+                      pietra che gira piano sotto una luce, non una lucina
+                      di Natale. E' questo il numero che si abbassa quando
+                      "luccicano troppo velocemente", non la secchezza.
+         ritmoVar     quanta differenza di ritmo c'e' fra una particella e
+                      l'altra. Serve: a ritmo uguale per tutti il campo
+                      pulsa insieme e si vede il battito. */
+      quota:        0.015,
+      forza:        6.0,
+      secchezza:    26.0,
+      ritmo:        0.16,
+      ritmoVar:     0.45,
+
+      /* Di quanto si allarga una stella di prima grandezza. Non lampeggia:
+         sta accesa e basta. E' questo, non il lampo, a dare al cielo le
+         grandezze diverse — e va alzato quando il campo sembra piatto,
+         invece di mettere piu' scintillio. */
+      bagliore:     0.85,
 
       /* ——— l'ottica del gioielliere ————————————————————————————
          fuoco        dove sta il piano a fuoco, in z. 0 = il piano della
@@ -180,13 +200,16 @@
                       fuori fuoco. La sua luce si spegne in proporzione:
                       stessa energia, piu' area.
          flare        quanto e' lungo il raggio della croce, in pixel css.
+                      E' QUESTO che decide quanto grande appare un lampo:
+                      la croce e l'alone attorno occupano quasi tutto lo
+                      sprite, quindi raddoppiarlo raddoppia l'ingombro.
          iride        quanta dominante di colore prende un lampo. Poca: e'
                       un accenno, non un arcobaleno. Sopra 0.3 sembra un
                       difetto dello schermo. */
       fuoco:        0,
       profondita:   380,
       bokeh:        3.4,
-      flare:        34,
+      flare:        19,
       iride:        0.17,
 
       /* ——— la salita della luce ————————————————————————————————
@@ -300,6 +323,7 @@
     "uniform float uSbianca, uPunto, uCrescita;",
     "uniform float uQuota, uForza, uSecchezza, uGuadagno;",
     "uniform float uFuoco, uProfondita, uBokeh, uFlare, uIride;",
+    "uniform float uRitmo, uRitmoVar, uBagliore;",
     "out vec4 vCol;",
     "out vec3 vForma;",   /* x = raggio del disco dentro lo sprite, y = sfuoco, z = lampo */
 
@@ -404,7 +428,16 @@
        stessa energia spalmata su piu' area. */
     "  float sfuoco = clamp(abs(p.z - uFuoco) / uProfondita, 0.0, 1.0);",
     "  sfuoco *= sfuoco;",
-    "  float nucleo  = uPunto * uDpr * clamp(sc, 1.0, uCrescita);",
+
+    /* Le stelle di prima grandezza si allargano un po'. Non e' un effetto:
+       una sorgente molto piu' forte satura un'area piu' larga, e' quello che
+       fa una pellicola e quello che fa un occhio. Serve perche' il cielo
+       abbia grandezze diverse SENZA doverle far lampeggiare: le poche
+       brillanti fisse portano la ricchezza, il lampo resta un lusso raro.
+       A distacco appena avvenuto taglia vale 1 e il bagliore e' zero,
+       quindi la cucitura con la fotografia resta esatta. */
+    "  float astro = smoothstep(1.1, 2.9, taglia);",
+    "  float nucleo  = uPunto * uDpr * clamp(sc, 1.0, uCrescita) * (1.0 + uBagliore * astro);",
     "  float largo   = nucleo * (1.0 + sfuoco * uBokeh);",
     "  float attenua = 1.0 / (1.0 + sfuoco * uBokeh * 1.4);",
 
@@ -415,7 +448,7 @@
        81..84 le velocita'. */
     "  float acceso = step(dado(c, 20 + slot), uQuota);",
     "  float ph = dado(c, 30 + slot) * 6.2831853;",
-    "  float rt = 0.5 + 2.0 * dado(c, 50 + slot);",
+    "  float rt = uRitmo + uRitmoVar * dado(c, 50 + slot);",
     "  float lampo = acceso * pow(max(0.0, sin(uTime * rt + ph)), uSecchezza);",
 
     /* La croce a quattro punte esce solo al culmine del lampo E solo su chi
@@ -484,7 +517,7 @@
     "  float px = exp(-abs(d.x) * 7.0) * exp(-abs(d.y) * 190.0);",
     "  float py = exp(-abs(d.y) * 7.0) * exp(-abs(d.x) * 190.0);",
     "  float alone = exp(-r * 13.0);",
-    "  float stella = (px + py + alone * 0.55) * vForma.z;",
+    "  float stella = (px + py + alone * 0.34) * vForma.z;",
 
     "  float a = clamp(disco + stella, 0.0, 6.0);",
     "  if (a <= 0.002) discard;",
@@ -793,6 +826,9 @@
       gl.uniform1f(u.uBokeh, P.bokeh);
       gl.uniform1f(u.uFlare, P.flare);
       gl.uniform1f(u.uIride, P.iride);
+      gl.uniform1f(u.uRitmo, P.ritmo);
+      gl.uniform1f(u.uRitmoVar, P.ritmoVar);
+      gl.uniform1f(u.uBagliore, P.bagliore);
       gl.uniform1f(u.uGuadagno, 1 + P.guadagno * smoothstep(P.guadagnoDa, P.guadagnoA, p));
       gl.uniform2f(u.uDeriva2,
         (res[0] * 0.5 - (rect[0] + rect[2] * 0.5)) * P.centra,

@@ -242,6 +242,49 @@
       flare:        19,
       iride:        0.17,
 
+      /* ——— il tocco del mouse ——————————————————————————————————
+         Dove passa il puntatore NON si alza la luce: si alza la probabilita'
+         che una stella scocchi. Un diamante non diventa piu' luminoso quando
+         giri la mano — sono altre sfaccettature che prendono il riflesso. Un
+         alone di luce in piu' sarebbe una torcia, e una torcia su un campo
+         fitto impasta invece di illuminare.
+
+         quota      quante stelle possono partecipare al tocco. Molte piu' di
+                    quelle che scintillano da sole: il senso e' che dove passi
+                    "si sveglia" una parte del cielo che era ferma.
+         forza      quanto brucia un lampo del tocco. Separata da quella dei
+                    lampi normali perche' questo deve passare anche attraverso
+                    la sfocatura, e quindi parte piu' alto.
+         ritmo      quante volte piu' spesso scoccano dentro il tocco. E' un
+                    ritmo SUO, fisso per particella: non si puo' accelerare
+                    quello di base, perche' cambiare la velocita' di un seno
+                    gia' in corsa gli fa saltare la fase e si vedrebbe
+                    sfarfallare tutto il campo.
+         secco      quanto e' breve un lampo del tocco. Piu' morbido di quello
+                    normale (8 contro 26) per una ragione contata, non di
+                    gusto: la durata del lampo decide QUANTI ne sono accesi
+                    nello stesso istante. Con 26 ne brillano una trentina per
+                    fotogramma dentro la scia e non si vede niente; con 8
+                    diventano un centinaio e la scia si legge. Piu' morbido
+                    ancora e smettono di essere lampi: diventano un alone.
+         raggio     ampiezza dell'impronta, in altezze di schermo.
+         coda       secondi perche' la scia si spenga dietro di te.
+         salita     secondi perche' si accenda dove arrivi. Corta, se no il
+                    puntatore sembra in ritardo sulla mano.
+         da / a     dentro quale tratto della sezione il tocco esiste: dopo
+                    che la foto si e' sgretolata, prima che vinca il bianco.
+                    Sulla fotografia ancora intera sarebbe fuori luogo, e nel
+                    bianco non ci sarebbe niente da svegliare. */
+      toccoQuota:   0.80,
+      toccoRitmo:   9.0,
+      toccoForza:   13.0,
+      toccoSecco:   8.0,
+      toccoRaggio:  0.21,
+      toccoCoda:    0.70,
+      toccoSalita:  0.10,
+      toccoDa:      0.30,
+      toccoA:       0.78,
+
       /* ——— la salita della luce ————————————————————————————————
          Nell'ultimo tratto tutte le stelle insieme si accendono. Serve
          perche' il bianco della fine deve sembrare che venga DA LORO — sono
@@ -354,6 +397,8 @@
     "uniform float uQuota, uForza, uSecchezza, uGuadagno;",
     "uniform float uFuoco, uProfondita, uBokeh, uFlare, uIride;",
     "uniform float uRitmo, uRitmoVar, uBagliore;",
+    "uniform sampler2D uCalore;",
+    "uniform float uTocco, uToccoQuota, uToccoRitmo, uToccoForza, uToccoSecco;",
     "out vec4 vCol;",
     "out vec3 vForma;",   /* x = raggio del disco dentro lo sprite, y = sfuoco, z = lampo */
 
@@ -476,17 +521,39 @@
        reversibilita' non si tocca — qui pulsa solo la luce.
        semi distanti fra loro: 1..4 sono le direzioni, 41..44 la profondita',
        81..84 le velocita'. */
-    "  float acceso = step(dado(c, 20 + slot), uQuota);",
+    "  float d20 = dado(c, 20 + slot);",
+    "  float acceso = step(d20, uQuota);",
     "  float ph = dado(c, 30 + slot) * 6.2831853;",
     "  float rt = uRitmo + uRitmoVar * dado(c, 50 + slot);",
     "  float lampo = acceso * pow(max(0.0, sin(uTime * rt + ph)), uSecchezza);",
+
+    /* IL TOCCO. Il calore e' una piccola mappa in coordinate schermo che si
+       ritimbra dove sta il puntatore e si spegne dietro. Qui dentro le
+       stelle non diventano piu' luminose: ne scoccano semplicemente di piu'.
+
+       Il lampo del tocco e' MOLTIPLICATO per il calore, e questo non e' un
+       dettaglio: vuol dire che una stella che entra nella scia parte da zero
+       e sale. Se invece la si facesse partecipare di colpo — alzando la
+       soglia di chi scintilla — una stella sorpresa a meta' del proprio
+       lampo si accenderebbe di scatto, e con centomila stelle quel difetto
+       diventa un crepitio lungo tutto il bordo della scia. */
+    "  float lampoT = 0.0;",
+    "  if (uTocco > 0.0) {",
+    "    float h = texture(uCalore, scr / uRes).r * uTocco;",
+    "    if (h > 0.004) {",
+    "      float ammesso = 1.0 - smoothstep(uToccoQuota - 0.10, uToccoQuota, d20);",
+    "      float veloce = pow(max(0.0, sin(uTime * rt * uToccoRitmo + ph)), uToccoSecco);",
+    "      lampoT = ammesso * h * veloce;",
+    "      lampo = max(lampo, lampoT);",
+    "    }",
+    "  }",
 
     /* La croce a quattro punte esce solo al culmine del lampo E solo su chi
        e' a fuoco: un riflesso sfocato non ha punte, ha un alone. Questa
        distinzione e' quasi tutto — punte su tutto quanto sembrerebbe un
        filtro, punte solo sui nitidi sembra un obiettivo. */
     "  float croce = lampo * (1.0 - sfuoco);",
-    "  float luce  = taglia * (1.0 + uForza * lampo) * uGuadagno;",
+    "  float luce  = taglia * (1.0 + uForza * lampo + uToccoForza * lampoT) * uGuadagno;",
 
     /* IL FUOCO DEL DIAMANTE. Il cristallo separa la luce: il lampo non e'
        bianco, tira al freddo o all'oro secondo l'angolo. E' esattamente cio'
@@ -521,7 +588,15 @@
        ha scartato. Una dissolvenza qui sarebbe un buco nero grande un pixel,
        moltiplicato centomila volte lungo tutto il fronte dell'erosione. */
     "  float apre   = nato > 0.0 ? smoothstep(0.0, 0.02, tau - nato) : 1.0;",
-    "  vCol = vec4(cc * luce * attenua, apre * vicino * via);",
+    /* Il lampo del tocco passa attraverso la sfocatura. attenua esiste per
+       conservare l'energia: chi e' fuori fuoco si allarga, quindi si spegne.
+       Giusto per una luce ferma — ma nel cielo quasi tutte le particelle
+       sono ormai lontane dal piano di fuoco, quindi senza questa deroga il
+       tocco accenderebbe solo la minoranza nitida e non si vedrebbe niente.
+       E non e' un imbroglio: una sorgente abbastanza forte si vede benissimo
+       anche sfocata — diventa un disco luminoso invece di un punto, che e'
+       poi la cosa piu' bella che possa succedere qui dentro. */
+    "  vCol = vec4(cc * luce * mix(attenua, 1.0, lampoT), apre * vicino * via);",
     "}"
   ].join("\n");
 
@@ -682,6 +757,20 @@
     var fermata = 1, veloDa = I.veloDa, veloA = I.veloA;
     var statoBarra = -1;
 
+    /* ——— il calore del puntatore ————————————————————————————————
+       Dove e' passato il mouse, di recente. Una mappa minuscola in coordinate
+       schermo: 64x36 celle, che ogni fotogramma si spengono un po' e vengono
+       ritimbrate sotto il puntatore. Il vertex shader la legge alla posizione
+       della particella.
+
+       Minuscola apposta, e tenuta sulla CPU: una scia si legge morbida, non
+       nitida, quindi la risoluzione non serve — ci pensa il filtro lineare
+       della texture a interpolarla. Duemilatrecento moltiplicazioni e due
+       chilobyte caricati per fotogramma costano meno di qualunque alternativa
+       fatta con framebuffer da scambiare, e non c'e' niente da gestire. */
+    var CAL_X = 64, CAL_Y = 36;
+    var calore = null, calByte = null, calTex = null, calMouse = null, calT = 0;
+
     /* ——— avvio ————————————————————————————————————————————————— */
 
     function apriGL() {
@@ -728,6 +817,68 @@
         img.addEventListener("load", vai, { once: true });
         img.addEventListener("error", function () { cb(null); }, { once: true });
       }
+    }
+
+    function apriCalore() {
+      /* Solo dove un puntatore esiste davvero. Su un telefono non c'e' niente
+         da seguire, e il costo — per quanto piccolo — sarebbe speso per una
+         cosa che nessuno puo' vedere. */
+      if (!pilotaCursore) return;
+      calore  = new Float32Array(CAL_X * CAL_Y);
+      calByte = new Uint8Array(CAL_X * CAL_Y);
+      global.addEventListener("mousemove", function (e) {
+        calMouse = [e.clientX, e.clientY];
+      }, { passive: true });
+      /* uscito dalla finestra, la scia si spegne da sola invece di restare
+         accesa per sempre nell'ultimo punto visto */
+      document.addEventListener("mouseleave", function () { calMouse = null; }, { passive: true });
+    }
+
+    function aggiornaCalore(ora) {
+      if (!calore || !gl || !calTex) return;
+      var dt = calT ? Math.min(0.1, ora - calT) : 0.016;
+      calT = ora;
+
+      /* spegnimento e accensione per tempo, non per fotogramma: la scia dura
+         gli stessi secondi a 30 come a 120 al secondo */
+      var giu = Math.exp(-dt / P.toccoCoda);
+      var su  = 1 - Math.exp(-dt / P.toccoSalita);
+      var i, j, k;
+      for (i = 0; i < calore.length; i++) calore[i] *= giu;
+
+      if (calMouse) {
+        var vw = global.innerWidth, vh = global.innerHeight;
+        var asp = vw / vh;
+        var mx = calMouse[0] / vw, my = calMouse[1] / vh;
+        var R = P.toccoRaggio;
+        /* solo le celle dentro l'impronta: il resto non si tocca */
+        var i0 = Math.max(0, Math.floor((mx - R / asp) * CAL_X));
+        var i1 = Math.min(CAL_X - 1, Math.ceil((mx + R / asp) * CAL_X));
+        var j0 = Math.max(0, Math.floor((my - R) * CAL_Y));
+        var j1 = Math.min(CAL_Y - 1, Math.ceil((my + R) * CAL_Y));
+        for (j = j0; j <= j1; j++) {
+          var ny = (j + 0.5) / CAL_Y - my;
+          for (i = i0; i <= i1; i++) {
+            /* la x si corregge per il formato dello schermo, se no
+               l'impronta e' un'ellisse schiacciata invece di un cerchio */
+            var nx = ((i + 0.5) / CAL_X - mx) * asp;
+            var dd = Math.sqrt(nx * nx + ny * ny) / R;
+            if (dd >= 1) continue;
+            var f = (1 - dd) * (1 - dd) * su;
+            k = j * CAL_X + i;
+            calore[k] += (1 - calore[k]) * f;
+          }
+        }
+      }
+
+      for (i = 0; i < calore.length; i++) {
+        var v = calore[i];
+        calByte[i] = v <= 0 ? 0 : (v >= 1 ? 255 : (v * 255) | 0);
+      }
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, calTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, CAL_X, CAL_Y, gl.RED, gl.UNSIGNED_BYTE, calByte);
     }
 
     function misura() {
@@ -805,6 +956,22 @@
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+          /* La mappa del calore esiste sempre, anche dove il tocco non c'e':
+             un sampler dichiarato e mai legato e' una fonte di avvisi e, su
+             qualche driver, di guai veri. Due chilobyte per non pensarci. */
+          calTex = gl.createTexture();
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, calTex);
+          gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, CAL_X, CAL_Y, 0, gl.RED, gl.UNSIGNED_BYTE,
+                        new Uint8Array(CAL_X * CAL_Y));
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.activeTexture(gl.TEXTURE0);
+          apriCalore();
         } catch (e) {
           /* foto non leggibile: quasi sempre CORS. Non e' un motivo per
              lasciare un buco nella pagina — si passa al ripiego. */
@@ -844,6 +1011,8 @@
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.bindVertexArray(vao);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, calTex);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, tex);
 
@@ -899,6 +1068,18 @@
       gl.uniform1f(u.uRitmo, P.ritmo);
       gl.uniform1f(u.uRitmoVar, P.ritmoVar);
       gl.uniform1f(u.uBagliore, P.bagliore);
+
+      /* Il tocco vive solo nel cielo: entra quando la foto si e' sgretolata,
+         esce prima che il bianco copra tutto. Fuori da quella finestra il
+         fattore e' zero e lo shader salta il blocco per intero. */
+      gl.uniform1i(u.uCalore, 1);
+      gl.uniform1f(u.uToccoQuota, P.toccoQuota);
+      gl.uniform1f(u.uToccoRitmo, P.toccoRitmo);
+      gl.uniform1f(u.uToccoForza, P.toccoForza);
+      gl.uniform1f(u.uToccoSecco, P.toccoSecco);
+      gl.uniform1f(u.uTocco, calore
+        ? smoothstep(P.toccoDa, P.toccoDa + 0.06, p) * (1 - smoothstep(P.toccoA - 0.10, P.toccoA, p))
+        : 0);
       gl.uniform1f(u.uGuadagno, 1 + P.guadagno * smoothstep(P.guadagnoDa, P.guadagnoA, p));
       gl.uniform2f(u.uDeriva2,
         (res[0] * 0.5 - (rect[0] + rect[2] * 0.5)) * P.centra,
@@ -1031,6 +1212,7 @@
           misura();
           if (statoFermo && progresso > 0) bloccato = true;
         }
+        aggiornaCalore(orologio());
         disegna();
       }
       else if (ripiego) disegnaRipiego();

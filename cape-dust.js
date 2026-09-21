@@ -54,15 +54,45 @@
        traduce in position:fixed. */
     rig:      ".cape-hs-sticky",
     rigTrack: ".cape-hs-track",
+    rigWrap:  ".cape-hs-wrap",
     fermo:    "is-fermo",
 
     /* Il velo: quanto il CONTENUTO della slide (titoli, bottone) e' ancora
        visibile. La foto non e' inclusa nel conto — quella, appena il canvas
-       e' pronto, viene spenta del tutto e la ridisegniamo noi. */
+       e' pronto, viene spenta del tutto e la ridisegniamo noi.
+
+       LA FINESTRA E' CORTA PER FORZA, e il motivo non si deduce guardando
+       questo file. Il riarmo della tendina, in pagina, tiene un
+       IntersectionObserver su .cape-hs-wrap: quando il WRAP esce dal
+       viewport riarma tutte le sezioni, e riarmare vuol dire scrivere
+       opacity:0 con transition:none sulle righe di testo. Ma la slide in
+       quel momento e' ancora sullo schermo, perche' ce la tiene is-fermo:
+       quindi il testo si spegne DI SCATTO sotto le stelle.
+       Il wrap esce presto — con 600vh di sezione e 100vh di accavallamento,
+       al 20% del progresso — quindi il velo deve aver gia' finito prima.
+       Non e' un numero da indovinare: sotto viene misurato (vedi fermata()) e
+       la finestra si accorcia da sola se la geometria cambia. */
     velo:     "--cape-veil",
-    veloDa:   0.04,
-    veloA:    0.30,
+    veloDa:   0.02,
+    veloA:    0.17,
     fotoOff:  "is-dust-off",
+
+    /* ——— la barra in alto ————————————————————————————————————————
+       Dentro la sezione si ritira verso l'alto e torna giu' appena si esce,
+       da qualunque lato: chi sale dallo studio-hero se la ritrova quando
+       rientra nel rig, chi scende la ritrova nello studio-hero.
+
+       Non si anima con una transition messa nel CSS di pagina, e non per
+       gusto: il foglio della head avverte che sulla barra le transizioni
+       vanno lasciate stare, perche' una forma abbreviata scritta li'
+       sostituirebbe quella impostata nel Designer. Un'animazione WAAPI non
+       tocca affatto la proprieta' transition — e in piu' si inverte da dove
+       si trova, invece di ripartire da capo, se si cambia idea a meta'. */
+    barra:     ".header-cape",
+    barraMs:   620,
+    barraCurva:"cubic-bezier(.16,1,.3,1)",
+    barraVia:  0.02,    /* oltre questo progresso la barra se ne va */
+    barraTorna:0.985,   /* sotto la fine, torna giu' per la sezione dopo */
 
     /* ——— il cursore del sito ————————————————————————————————————
        Sopra questa sezione non c'e' un elemento da leggere: c'e' una
@@ -628,7 +658,9 @@
     var img      = document.querySelector(O.foto || I.foto);
     var rig      = document.querySelector(I.rig);
     var rigTrack = document.querySelector(I.rigTrack);
+    var rigWrap  = document.querySelector(I.rigWrap);
     var cursore  = document.querySelector(I.cursore);
+    var barra    = document.querySelector(I.barra);
 
     var ridotto = false;
     try { ridotto = global.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
@@ -647,6 +679,8 @@
     var vivo = false, girando = false, spento = false;
     var t0 = (global.performance && performance.now ? performance.now() : Date.now());
     var progresso = 0, statoVelo = -1, statoScuro = null, statoFermo = false, statoFoto = false;
+    var fermata = 1, veloDa = I.veloDa, veloA = I.veloA;
+    var corsaBarra = null, barraSu = false;
 
     /* ——— avvio ————————————————————————————————————————————————— */
 
@@ -715,7 +749,43 @@
       if (q < 1) { cx = Math.max(8, Math.round(cx * q)); cy = Math.max(8, Math.round(cy * q)); }
       celle = { x: cx, y: cy };
       nPunti = cx * cy * 4;
+      finestraVelo();
       return true;
+    }
+
+    /* A che progresso il rig esce dal viewport — cioe' l'istante in cui, in
+       pagina, il riarmo della tendina spegne di scatto il testo della slide.
+       Il velo deve aver finito PRIMA, o quello scatto si vede.
+
+       Si misura invece di scriverlo a mano perche' dipende da due numeri che
+       stanno altrove e che un domani qualcuno cambiera' senza pensare a
+       questo file: l'altezza di .cape-dust-pin e il suo margin-top negativo.
+       Misurato, resta giusto da solo. */
+    function fermataTendina() {
+      if (!rigWrap) return 1;
+      var y = global.scrollY || global.pageYOffset;
+      var corsa = pin.offsetHeight - global.innerHeight;
+      if (corsa <= 0) return 1;
+      var fondoWrap = rigWrap.getBoundingClientRect().bottom + y;
+      var cimaPin   = pin.getBoundingClientRect().top + y;
+      return clamp((fondoWrap - cimaPin) / corsa, 0.05, 1);
+    }
+
+    function finestraVelo() {
+      fermata = fermataTendina();
+      var limite = fermata - 0.02;
+      if (I.veloA > limite) {
+        /* si accorcia in proporzione, cosi' la forma della dissolvenza —
+           quanto parte tardi rispetto a quanto dura — resta la stessa */
+        var k = limite / I.veloA;
+        veloA  = limite;
+        veloDa = I.veloDa * k;
+      } else {
+        veloA  = I.veloA;
+        veloDa = I.veloDa;
+      }
+      if (veloDa < 0) veloDa = 0;
+      if (veloA <= veloDa) veloA = veloDa + 0.01;
     }
 
     function prepara() {
@@ -857,6 +927,55 @@
 
     /* ——— la regia attorno alla sezione ————————————————————————— */
 
+    /* La barra si ritira in su e torna giu'. Una sola animazione, costruita
+       una volta e tenuta in pausa: per invertirla si cambia il verso di
+       lettura e si riparte da dove si era arrivati. Cancellarla e rifarne
+       un'altra al contrario, che e' la strada corta, fa saltare la barra
+       alla posizione di partenza ogni volta che si cambia idea a meta' —
+       e a meta' ci si cambia idea spesso, perche' questo lo comanda lo
+       scroll di una persona, non un timer. */
+    function ritiraBarra(via) {
+      if (!barra || via === barraSu) return;
+      barraSu = via;
+      /* Tornando, i click si riaccendono SUBITO; andandosene, si spengono
+         solo a salita finita (vedi onfinish). Il contrario — spegnerli al
+         primo fotogramma — lascia per mezzo secondo una barra che si vede
+         benissimo e non risponde: chi stava andando col mouse sul menu
+         proprio mentre parte la sezione clicca a vuoto. */
+      if (!via) barra.style.pointerEvents = "";
+
+      if (!barra.animate) {            /* browser senza WAAPI: niente moto */
+        barra.style.transform = via ? "translateY(-110%)" : "";
+        barra.style.opacity   = via ? "0" : "";
+        return;
+      }
+      if (!corsaBarra) {
+        corsaBarra = barra.animate(
+          [{ transform: "translateY(0)", opacity: 1 },
+           { transform: "translateY(-110%)", opacity: 0 }],
+          { duration: I.barraMs, easing: I.barraCurva, fill: "both" }
+        );
+        corsaBarra.pause();
+        try { corsaBarra.currentTime = 0; } catch (e) {}
+        /* Tornata giu', l'animazione si toglie di mezzo. Con fill:'both' una
+           corsa finita continua a imporre il suo primo fotogramma, e da li'
+           in poi qualunque transform messo sulla barra nel Designer sarebbe
+           scavalcato da noi — un guasto che si manifesta mesi dopo, altrove,
+           e che nessuno verrebbe a cercare qui. */
+        corsaBarra.onfinish = function () {
+          if (!corsaBarra) return;
+          if (corsaBarra.playbackRate < 0) {
+            try { corsaBarra.cancel(); } catch (e) {}
+            corsaBarra = null;
+          } else if (barra) {
+            barra.style.pointerEvents = "none";
+          }
+        };
+      }
+      corsaBarra.playbackRate = via ? 1 : -1;
+      corsaBarra.play();
+    }
+
     function stato() {
       var r = pin.getBoundingClientRect();
       var corsa = pin.offsetHeight - global.innerHeight;
@@ -880,12 +999,16 @@
       }
 
       if (rigTrack) {
-        var v = 1 - smoothstep(I.veloDa, I.veloA, progresso);
+        var v = 1 - smoothstep(veloDa, veloA, progresso);
         if (Math.abs(v - statoVelo) >= 0.004) {
           statoVelo = v;
           rigTrack.style.setProperty(I.velo, v.toFixed(3));
         }
       }
+
+      /* Dentro la sezione la barra non c'e'. Fuori — sopra o sotto, non
+         importa da che parte si arriva — c'e'. */
+      ritiraBarra(progresso > I.barraVia && progresso < I.barraTorna);
 
       /* L'header si ridipinge leggendo il fondo sotto di se', e qui sotto non
          c'e' niente di opaco da leggere: glielo diciamo noi. */
@@ -903,6 +1026,7 @@
       if (statoFermo) { statoFermo = false; rig && rig.classList.remove(I.fermo); }
       if (statoFoto)  { statoFoto = false;  img && img.classList.remove(I.fotoOff); }
       if (statoScuro !== null) { statoScuro = null; stick.removeAttribute("data-hdr"); }
+      ritiraBarra(false);
       if (rigTrack && statoVelo !== -1) { statoVelo = -1; rigTrack.style.removeProperty(I.velo); }
       if (cursore) cursore.style.removeProperty(I.cursoreVar);
     }
@@ -932,6 +1056,9 @@
     new IntersectionObserver(function (es) {
       var dentro = es[0].isIntersecting;
       if (dentro && !pronto && !ripiego) prepara();
+      /* anche nel ripiego, dove misura() non gira mai: il testo si spegne
+         di scatto lo stesso, e il velo deve finire prima anche li' */
+      if (dentro) finestraVelo();
       vivo = dentro;
       if (vivo) { if (!girando) { girando = true; global.requestAnimationFrame(giro); } }
       else libera();
@@ -941,6 +1068,7 @@
     function suResize() {
       clearTimeout(rT);
       rT = setTimeout(function () {
+        finestraVelo();
         if (!pronto) return;
         var r = img.getBoundingClientRect();
         cover = ritaglio(img, r.width || 1, r.height || 1);
@@ -960,6 +1088,8 @@
       destroy: function () {
         spento = true;
         libera();
+        if (corsaBarra) { try { corsaBarra.cancel(); } catch (e) {} corsaBarra = null; }
+        if (barra) { barra.style.pointerEvents = ""; }
         global.removeEventListener("resize", suResize);
         if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
       }
@@ -987,9 +1117,12 @@
           [I.velo, I.rigTrack, "quanto il contenuto della slide e' ancora visibile"],
           [I.fotoOff, I.foto, "spegne la foto vera: da qui in poi la disegna il canvas"],
           ["data-hdr", I.stick, "dice alla barra se sotto c'e' il nero o la luce"],
+          ["transform", I.barra, "la barra si ritira in su dentro la sezione (animazione WAAPI, non transition)"],
           [I.cursoreVar, I.cursore, "il colore del cursore sopra la simulazione"],
           ["window.capeDust", "", "progresso della sezione, per chi volesse leggerlo"]
-        ]
+        ],
+        leggo: [["tendina-righe", I.rigWrap,
+                 "non le tocca: ne aspetta il riarmo, e ci finisce il velo prima"]]
       });
     }
     return sezione;

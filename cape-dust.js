@@ -99,6 +99,14 @@
        simulazione. Il colore glielo diciamo noi, scrivendo la variabile e non
        la classe — la classe la gestisce gia' lo script del cursore, e in due
        a scrivere la stessa cosa si vede sfarfallare. */
+    /* Le due immagini della lastra: la quota della goffratura e la pendenza
+       del suo volume. Stanno nella repo cape-rilievo, pinnate a uno SHA — a
+       @main jsDelivr le tiene in cache fino a una settimana e si finisce a
+       guardare una versione vecchia senza capire perche'. */
+    lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@fbe6f72f9a7c90bf9846963f25aa746551eed3b7/",
+    lastraSolco: "stampa.png",
+    lastraGobba: "stampa-gobba.png",
+
     cursore:    "#capecur",
     cursoreVar: "--cc",
     suScuro:    "#ffffff",
@@ -334,7 +342,51 @@
       sostaQuota:   0.66,   /* a che punto del proprio spettacolo si pianta */
 
       /* La tendina bianca a tutto schermo resta accesa: e' lei che chiude. */
-      biancoFinale: true
+      biancoFinale: true,
+
+      /* ——— IL RADUNO ————————————————————————————————————————————
+         Fin qui ogni pixel, una volta staccato, andava dritto per sempre.
+         Adesso una parte di loro ha una DESTINAZIONE: si radunano al centro
+         dello schermo e si addossano finche' la loro luce sommata non satura
+         in bianco pieno. E' questo — e solo questo — che fa la pagina bianca
+         su cui compare la stampa incisa. Non c'e' nessun cerchio dipinto
+         sopra: un cerchio dipinto ha un bordo, e qualunque bordo si disegni
+         e' peggio di quello che fanno loro diradandosi.
+
+         CHI arriva prima: quelli che vanno piu' vicino al centro. Il bianco
+         quindi non compare, FIORISCE dal mezzo verso fuori.
+
+         Il raduno va a `grezzo`, cioe' al binario intero, e non al progresso
+         di questa sezione: durante la sosta il volo e' fermo e il raduno
+         deve continuare lo stesso. */
+      posaQuota:    0.55,   /* che frazione di pixel si raduna */
+      posaRaggio:   0.46,   /* quanto e' largo il raduno, in altezze di schermo */
+      posaStretta:  0.85,   /* <1 addensa verso il centro, >1 verso il bordo */
+      posaOvale:    0.88,   /* quanto e' schiacciato */
+      posaDa:       0.50,   /* sul binario intero */
+      posaA:        0.74,
+      posaSfasa:    0.55,   /* quanto separa il primo arrivato dall'ultimo */
+      posaLuce:     0.45,   /* quanto vale un pixel che si e' posato */
+
+      /* ——— LA LASTRA ————————————————————————————————————————————
+         La stampa goffrata a secco, incisa dentro il bianco che i pixel
+         hanno appena fatto. Compare DAL BASSO IN SU, nello stesso ordine in
+         cui il bianco si riempie, e si dissolve quando il campo riparte e il
+         bianco vince.
+
+         Sul bianco pieno la luce puo' solo fare OMBRA: sopra il bianco non
+         c'e' niente da schiarire. Non e' una rinuncia — e' anche quello che
+         toglie il rettangolo: dipingendo anche il bianco si vedrebbe il
+         riquadro della lastra stampato sulla pagina. */
+      lastraDa:     0.58,   /* comincia a comparire */
+      lastraA:      0.76,   /* c'e' tutta */
+      lastraFino:   0.84,   /* resta intera */
+      lastraVia:    0.93,   /* sparita */
+      lastraAlta:   0.74,   /* altezza in frazione di schermo */
+      lastraMassa:  2.6,
+      lastraOmbra:  0.62,
+      lastraLucida: 0.34,
+      lastraForza:  6.5
     }
   };
 
@@ -429,6 +481,8 @@
     "uniform float uQuota, uForza, uSecchezza, uGuadagno;",
     "uniform float uFuoco, uProfondita, uBokeh, uFlare, uIride;",
     "uniform float uRitmo, uRitmoVar, uBagliore;",
+    "uniform float uPosa, uPosaQuota, uPosaRaggio, uPosaStretta, uPosaOvale;",
+    "uniform float uPosaSfasa, uPosaLuce;",
     "uniform sampler2D uCalore;",
     "uniform float uTocco, uToccoQuota, uToccoRitmo, uToccoForza, uToccoSecco;",
     "out vec4 vCol;",
@@ -507,12 +561,30 @@
     "  vec2 vc = uRes * 0.5;",
     "  float sc = uCamera / max(uCamera - p.z, uCamera * 0.14);",
     "  vec2 scr = vc + (p.xy - vc) * sc;",
+
+    /* ——— il raduno ———
+       Una parte dei pixel ha una destinazione dentro un disco al centro
+       dello schermo. Chi va piu' vicino al centro arriva prima, quindi il
+       bianco fiorisce dal mezzo invece di comparire tutto insieme.
+       Si mescola QUI, sulla posizione gia' proiettata: un pixel che si e'
+       posato sta sulla carta, e la carta non ha prospettiva. */
+    "  float posa = 0.0;",
+    "  if (uPosa > 0.0) {",
+    "    float aa = dado(c, 90 + slot) * 6.2831853;",
+    "    float rr = pow(dado(c, 94 + slot), uPosaStretta);",
+    "    vec2  ber = vc + vec2(cos(aa), sin(aa)) * (rr * uPosaRaggio) * vec2(1.0, uPosaOvale);",
+    "    float sel = step(dado(c, 98 + slot), uPosaQuota);",
+    "    float q = clamp((uPosa - rr * uPosaSfasa) / max(1.0 - uPosaSfasa, 0.001), 0.0, 1.0);",
+    "    posa = sel * (1.0 - pow(1.0 - q, 3.0));",
+    "    scr = mix(scr, ber, posa);",
+    "  }",
+
     "  vec2 n = (scr / uRes) * 2.0 - 1.0;",
     "  gl_Position = vec4(n.x, -n.y, 0.0, 1.0);",
 
     /* il colore della foto che si perde nel bianco lungo il viaggio */
     "  float bianco = smoothstep(0.0, uSbianca, tau);",
-    "  vec3 cc = mix(col, vec3(1.0), bianco);",
+    "  vec3 cc = mix(mix(col, vec3(1.0), bianco), vec3(1.0), posa);",
 
     /* GAMMA DINAMICA. Quasi tutti quasi spenti, pochissimi accesi davvero:
        l'elevamento alla quinta schiaccia la distribuzione in fondo. E' la
@@ -523,7 +595,7 @@
        Entra INSIEME al bianco, cosi' nell'istante del distacco il pixel vale
        esattamente quello che valeva nella fotografia e la cucitura col
        rettangolo resta invisibile. */
-    "  float taglia = mix(1.0, 0.02 + 3.20 * pow(dado(c, 60 + slot), 5.0), bianco);",
+    "  float taglia = mix(mix(1.0, 0.02 + 3.20 * pow(dado(c, 60 + slot), 5.0), bianco), uPosaLuce, posa);",
 
     /* IL FUOCO. Un piano a fuoco, e tutto il resto che sfuoca allontanandosi
        da li'. E' la cosa che dice "macro su gioielleria" invece di "sistema
@@ -534,7 +606,7 @@
        viaggia. Chi sfuoca si allarga e, a parita' di luce, si spegne: la
        stessa energia spalmata su piu' area. */
     "  float sfuoco = clamp(abs(p.z - uFuoco) / uProfondita, 0.0, 1.0);",
-    "  sfuoco *= sfuoco;",
+    "  sfuoco *= sfuoco * (1.0 - posa);",
 
     /* Le stelle di prima grandezza si allargano un po'. Non e' un effetto:
        una sorgente molto piu' forte satura un'area piu' larga, e' quello che
@@ -544,7 +616,7 @@
        A distacco appena avvenuto taglia vale 1 e il bagliore e' zero,
        quindi la cucitura con la fotografia resta esatta. */
     "  float astro = smoothstep(1.1, 2.9, taglia);",
-    "  float nucleo  = uPunto * uDpr * clamp(sc, 1.0, uCrescita) * (1.0 + uBagliore * astro);",
+    "  float nucleo  = uPunto * uDpr * clamp(mix(sc, 1.0, posa), 1.0, uCrescita) * (1.0 + uBagliore * astro);",
     "  float largo   = nucleo * (1.0 + sfuoco * uBokeh);",
     "  float attenua = 1.0 / (1.0 + sfuoco * uBokeh * 1.4);",
 
@@ -557,7 +629,7 @@
     "  float acceso = step(d20, uQuota);",
     "  float ph = dado(c, 30 + slot) * 6.2831853;",
     "  float rt = uRitmo + uRitmoVar * dado(c, 50 + slot);",
-    "  float lampo = acceso * pow(max(0.0, sin(uTime * rt + ph)), uSecchezza);",
+    "  float lampo = acceso * pow(max(0.0, sin(uTime * rt + ph)), uSecchezza) * (1.0 - posa * 0.9);",
 
     /* IL TOCCO. Il calore e' una piccola mappa in coordinate schermo che si
        ritimbra dove sta il puntatore e si spegne dietro. Qui dentro le
@@ -628,7 +700,7 @@
        E non e' un imbroglio: una sorgente abbastanza forte si vede benissimo
        anche sfocata — diventa un disco luminoso invece di un punto, che e'
        poi la cosa piu' bella che possa succedere qui dentro. */
-    "  vCol = vec4(cc * luce * mix(attenua, 1.0, lampoT), apre * vicino * via);",
+    "  vCol = vec4(cc * luce * mix(attenua, 1.0, lampoT), mix(apre * vicino * via, 1.0, posa));",
     "}"
   ].join("\n");
 
@@ -683,6 +755,75 @@
     "uniform float uA;",
     "out vec4 oCol;",
     "void main(){ oCol = vec4(uA); }"
+  ].join("\n");
+
+  /* ——— la lastra incisa ————————————————————————————————————————————
+     Un rettangolo al centro dello schermo, e dentro una stampa serigrafica
+     goffrata a secco: la carta schiacciata dove batte l'inchiostro.
+
+     IL SEGNO E' AL CONTRARIO DI UN'INCISIONE. Un disegno a tratto si scava,
+     e il rilievo giusto e' un solco. Questa e' una stampa a sagome piene, e
+     il rilievo giusto e' un'IMPRESSIONE: l'inchiostro non si scava, si ALZA.
+     Nel file la mappa e' gia' scritta cosi' (valore alto = piu' in fondo);
+     sbagliare questo segno non da' errore, da' un risultato che sembra
+     giusto e ha le ombre dalla parte sbagliata.
+
+     LA GOBBA e' una seconda mappa che porta la PENDENZA del volume, gia'
+     derivata: sommandola a quella del solco la figura smette di essere un
+     contorno e diventa una cosa scolpita. Il RIFLESSO pero' lo tiene solo il
+     solco — su una gobba larga un riflesso largo sembra plastica bagnata,
+     sulle incisioni sottili sembra gesso. */
+  var VS_LASTRA = HEAD + [
+    "uniform vec4 uRect;",
+    "uniform vec2 uRes;",
+    "out vec2 vUv;",
+    "void main(){",
+    "  vec2 q = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));",
+    "  vUv = q;",
+    "  vec2 pp = uRect.xy + q * uRect.zw;",
+    "  vec2 n = (pp / uRes) * 2.0 - 1.0;",
+    "  gl_Position = vec4(n.x, -n.y, 0.0, 1.0);",
+    "}"
+  ].join("\n");
+
+  var FS_LASTRA = HEAD + [
+    "in vec2 vUv;",
+    "out vec4 oCol;",
+    "uniform sampler2D uMappa, uGobba;",
+    "uniform vec2  uTexel;",
+    "uniform vec3  uLuceA, uLuceB, uLuceC;",
+    "uniform float uAspetto, uForza, uMassa, uDiffusa, uLucida, uDurezza;",
+    "uniform float uAltezza, uRaggio, uRivela, uSpegni;",
+    "float luce(vec3 n, vec3 np, vec2 pos, vec3 l){",
+    "  if (l.z <= 0.0) return 0.0;",
+    "  vec3 v = vec3(l.xy - pos, uAltezza);",
+    "  float dist = length(v.xy);",
+    "  vec3 L = normalize(v);",
+    "  vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));",
+    "  float diff = dot(n, L) - L.z;",
+    "  float spec = pow(max(dot(np, H), 0.0), uDurezza) - pow(max(H.z, 0.0), uDurezza);",
+    "  float t = clamp(1.0 - dist / uRaggio, 0.0, 1.0);",
+    "  return (diff * uDiffusa + spec * uLucida) * (t * t * (3.0 - 2.0 * t)) * l.z;",
+    "}",
+    "void main(){",
+    "  vec2 uv = vUv;",
+    "  float hs = texture(uMappa, uv - vec2(uTexel.x, 0.0)).r;",
+    "  float hd = texture(uMappa, uv + vec2(uTexel.x, 0.0)).r;",
+    "  float hg = texture(uMappa, uv + vec2(0.0, uTexel.y)).r;",
+    "  float ha = texture(uMappa, uv - vec2(0.0, uTexel.y)).r;",
+    "  vec2 ps = vec2((hd - hs) * uForza, (hg - ha) * uForza);",
+    "  vec2 g  = texture(uGobba, uv).rg * 2.0 - 1.0;",
+    "  vec2 pos = vec2(uv.x, uv.y * uAspetto);",
+    "  vec3 n  = normalize(vec3(ps - g * uMassa, 1.0));",
+    "  vec3 np = normalize(vec3(ps, 1.0));",
+    "  float d = luce(n, np, pos, uLuceA) + luce(n, np, pos, uLuceB) + luce(n, np, pos, uLuceC);",
+    /* sul bianco pieno la luce puo' solo fare ombra: sopra non c'e' niente */
+    "  float a = clamp(-d, 0.0, 1.0);",
+    /* compare dal basso in su, nello stesso ordine in cui il bianco fiorisce */
+    "  a *= smoothstep(1.0 - uRivela - 0.02, 1.0 - uRivela + 0.12, uv.y);",
+    "  a *= uSpegni;",
+    "  oCol = vec4(0.0, 0.0, 0.0, a);",
+    "}"
   ].join("\n");
 
   /* ====================================================================== */
@@ -802,6 +943,8 @@
        fatta con framebuffer da scambiare, e non c'e' niente da gestire. */
     var CAL_X = 64, CAL_Y = 36;
     var calore = null, calByte = null, calTex = null, calMouse = null, calT = 0;
+    var lastra = null, lastraTex = null, gobbaTex = null;
+    var lastraPronta = false, lastraW = 0, lastraH = 0, lastraAng = 0, lastraT = 0;
 
     /* ——— avvio ————————————————————————————————————————————————— */
 
@@ -818,6 +961,7 @@
         prog  = programma(gl, VS_FOTO,  FS_FOTO);
         punti = programma(gl, VS_PUNTI, FS_PUNTI);
         velo  = programma(gl, VS_VELO,  FS_VELO);
+        lastra = programma(gl, VS_LASTRA, FS_LASTRA);
       } catch (e) { return false; }
       vao = gl.createVertexArray();          /* vuoto: i punti nascono da gl_VertexID */
       gl.disable(gl.DEPTH_TEST);
@@ -849,6 +993,39 @@
         img.addEventListener("load", vai, { once: true });
         img.addEventListener("error", function () { cb(null); }, { once: true });
       }
+    }
+
+    /* Le due mappe della lastra arrivano dalla repo cape-rilievo. Se non
+       arrivano non succede niente di male: la lastra semplicemente non si
+       disegna, e la sezione resta quella di prima. */
+    function apriLastra() {
+      function prendi(nome, unita, poi) {
+        var im = new Image();
+        im.crossOrigin = "anonymous";
+        im.onload = function () {
+          var t = gl.createTexture();
+          gl.activeTexture(gl.TEXTURE0 + unita);
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.activeTexture(gl.TEXTURE0);
+          poi(t, im.naturalWidth, im.naturalHeight);
+        };
+        im.src = I.lastraBase + nome;
+      }
+      prendi(I.lastraSolco, 2, function (t, w, h) {
+        lastraTex = t; lastraW = w; lastraH = h;
+        if (gobbaTex) lastraPronta = true;
+      });
+      prendi(I.lastraGobba, 3, function (t) {
+        gobbaTex = t;
+        if (lastraTex) lastraPronta = true;
+      });
     }
 
     function apriCalore() {
@@ -1004,6 +1181,7 @@
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
           gl.activeTexture(gl.TEXTURE0);
           apriCalore();
+          apriLastra();
         } catch (e) {
           /* foto non leggibile: quasi sempre CORS. Non e' un motivo per
              lasciare un buco nella pagina — si passa al ripiego. */
@@ -1112,13 +1290,79 @@
       gl.uniform1f(u.uTocco, calore
         ? smoothstep(P.toccoDa, P.toccoDa + 0.06, p) * (1 - smoothstep(P.toccoA - 0.10, P.toccoA, p))
         : 0);
+      /* IL RADUNO va a `grezzo`, il binario intero, e non a `p`: durante la
+         sosta il volo e' fermo e il raduno deve continuare lo stesso. E' la
+         sola cosa qui dentro che non guarda il progresso di questa sezione. */
+      gl.uniform1f(u.uPosa, smoothstep(P.posaDa, P.posaA, grezzo));
+      gl.uniform1f(u.uPosaQuota, P.posaQuota);
+      gl.uniform1f(u.uPosaRaggio, P.posaRaggio * res[1]);
+      gl.uniform1f(u.uPosaStretta, P.posaStretta);
+      gl.uniform1f(u.uPosaOvale, P.posaOvale);
+      gl.uniform1f(u.uPosaSfasa, P.posaSfasa);
+      gl.uniform1f(u.uPosaLuce, P.posaLuce);
+
       gl.uniform1f(u.uGuadagno, 1 + P.guadagno * smoothstep(P.guadagnoDa, P.guadagnoA, p));
       gl.uniform2f(u.uDeriva2,
         (res[0] * 0.5 - (rect[0] + rect[2] * 0.5)) * P.centra,
         (res[1] * 0.5 - (rect[1] + rect[3] * 0.5)) * P.centra);
       gl.drawArrays(gl.POINTS, 0, nPunti);
 
-      /* 3. il velo che chiude sul bianco pieno */
+      /* 3. la lastra incisa, dentro il bianco che i punti hanno appena fatto.
+            Va per forza DOPO di loro: e' un'ombra, e un'ombra ha bisogno di
+            qualcosa sotto su cui posarsi. */
+      var spegni = 1 - smoothstep(P.lastraFino, P.lastraVia, grezzo);
+      var rivela = smoothstep(P.lastraDa, P.lastraA, grezzo) * 1.14;
+      if (lastraPronta && rivela > 0.001 && spegni > 0.002) {
+        var ah = P.lastraAlta * res[1];
+        var aw = ah * (lastraW / lastraH);
+        var ax = (res[0] - aw) * 0.5, ay = (res[1] - ah) * 0.5;
+
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.useProgram(lastra.id);
+        var v = lastra.u;
+        gl.uniform4f(v.uRect, ax, ay, aw, ah);
+        gl.uniform2f(v.uRes, res[0], res[1]);
+        gl.uniform1i(v.uMappa, 2);
+        gl.uniform1i(v.uGobba, 3);
+        /* il passo della derivata segue la misura A SCHERMO: se la lastra e'
+           piu' piccola della mappa, due texel cadono nello stesso pixel e i
+           tratti fini sfarfallano */
+        var kk = Math.max(1, lastraW / Math.max(1, aw));
+        gl.uniform2f(v.uTexel, kk / lastraW, kk / lastraH);
+        gl.uniform1f(v.uAspetto, ah / aw);
+        gl.uniform1f(v.uForza, P.lastraForza);
+        gl.uniform1f(v.uMassa, P.lastraMassa);
+        gl.uniform1f(v.uDiffusa, P.lastraOmbra);
+        gl.uniform1f(v.uLucida, P.lastraLucida);
+        gl.uniform1f(v.uDurezza, 28);
+        gl.uniform1f(v.uAltezza, 0.30);
+        gl.uniform1f(v.uRaggio, 0.85);
+        gl.uniform1f(v.uRivela, rivela);
+        gl.uniform1f(v.uSpegni, spegni);
+
+        /* Due luci che girano piano piu' il puntatore. Le prime due servono
+           perche' senza, chi arriva e non muove il mouse vede un rettangolo
+           vuoto: una goffratura esiste solo dove la luce la taglia di lato. */
+        var ora = orologio();
+        lastraAng += (ora - lastraT) * 2 * Math.PI / 18;
+        lastraT = ora;
+        var asp = ah / aw, rr = 0.44;
+        var mouse = 0, mx = 0.5, my = asp * 0.5;
+        if (calMouse) {
+          mx = (calMouse[0] * dpr - ax) / aw;
+          my = (calMouse[1] * dpr - ay) / aw;
+          if (mx > -0.35 && mx < 1.35 && my > -0.35 * asp && my < 1.35 * asp) mouse = 1;
+        }
+        var gi = 0.26 * (1 - mouse);
+        gl.uniform3f(v.uLuceA, 0.5 + Math.cos(lastraAng + Math.PI) * rr,
+                               asp / 2 + Math.sin(lastraAng + Math.PI) * asp * rr, gi);
+        gl.uniform3f(v.uLuceB, 0.5 + Math.cos(lastraAng) * rr,
+                               asp / 2 + Math.sin(lastraAng) * asp * rr, gi);
+        gl.uniform3f(v.uLuceC, mx, my, mouse);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
+      /* 4. il velo che chiude sul bianco pieno */
       var a = P.biancoFinale === false ? 0 : smoothstep(P.veloDa, P.veloA, p);
       if (a > 0.001) {
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

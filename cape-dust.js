@@ -1806,10 +1806,22 @@
          nero. Senza simulazione, o prima che il mouse si muova, vale la
          soglia di sempre. */
       if (cursore && pilotaCursore) {
-        var chiaro = calMouse && pronto ? biancoSotto() : !s;
-        if (chiaro !== statoCursore) {
+        /* solo mentre la sezione e' incollata: prima e dopo sotto il
+           cursore c'e' la pagina vera, e la legge meglio lui */
+        var dentro = progresso > 0.0005 && grezzo < 1;
+        var chiaro = !dentro ? null : (calMouse && pronto ? biancoSotto() : !s);
+        if (chiaro === null && statoCursore !== null) {
+          statoCursore = null;
+          cursore.style.removeProperty(I.cursoreVar);
+        } else if (chiaro !== null && chiaro !== statoCursore) {
           statoCursore = chiaro;
-          cursore.style.setProperty(I.cursoreVar, chiaro ? I.suBianco : I.suScuro);
+          /* "important" non e' un vezzo: nel foglio della pagina --cc e'
+             scritto con !important su #capecur e su #capecur.su-scuro, e
+             senza la stessa forza la variabile scritta qui non vinceva mai —
+             il cursore restava a leggere un fondo che sulla simulazione non
+             c'e'. Fuori dalla sezione si toglie (qui sopra, e in libera()),
+             e torna tutto allo script del cursore. */
+          cursore.style.setProperty(I.cursoreVar, chiaro ? I.suBianco : I.suScuro, "important");
         }
       }
     }

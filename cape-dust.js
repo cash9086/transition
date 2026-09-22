@@ -305,26 +305,36 @@
       veloA:        0.88,
 
       /* ——— la coda: l'ultimo tratto del binario non e' di questa sezione ———
-         Dopo la polvere viene la radura — la carta bianca che si apre, i
-         diamanti che si posano, la lastra incisa — e sta sullo STESSO
-         binario, dentro allo stesso pannello incollato. Non e' una sezione
-         a parte: e' la seconda meta' di questa.
-
-         `coda` dice quanta parte del binario appartiene a quello che viene
-         dopo. Il progresso di qui si riscala di conseguenza, cosi' lo
-         spettacolo dura esattamente quanto durava prima anche se il binario
-         si e' allungato; passata quella soglia resta a 1, le particelle si
-         fermano dove sono e continuano solo a scintillare. Un cielo fermo
-         che brilla e' un cielo: le stelle non si muovono.
+         Dopo la polvere viene la lastra incisa, e sta sullo STESSO binario,
+         dentro allo stesso pannello incollato. Non e' una sezione a parte:
+         e' la seconda meta' di questa. `coda` dice quanta parte del binario
+         appartiene a quello che viene dopo.
 
          A zero questo file si comporta esattamente come prima. */
       coda:         0.36,
 
-      /* La tendina bianca a tutto schermo. Con la radura NON deve scattare:
-         il bianco lo fa lei, e non copre tutto — si apre al centro e il suo
-         bordo si sbriciola. Se un domani la radura va via, questo torna a
-         true e la sezione si richiude da sola sul bianco pieno. */
-      biancoFinale: false
+      /* ——— la sosta ————————————————————————————————————————————
+         E' il cuore dell'innesto, e non aggiunge nessun effetto: TOGLIE del
+         tempo.
+
+         A due terzi della sua corsa il campo e' nello stato piu' bello che
+         fa — il centro saturo di bianco, i bordi ancora neri — e ci passa
+         sopra in un soffio, perche' per lui e' solo un fotogramma di strada
+         verso il bianco pieno. Qui il progresso si PIANTA li' per un quarto
+         del binario: le particelle restano dove sono e continuano a
+         scintillare, e in quella pausa entra la lastra. Poi riparte, il
+         campo si allarga, e il bianco chiude come ha sempre fatto.
+
+         E' per questo che il bianco al centro NON viene dipinto da nessuna
+         parte: e' la luce di queste particelle addossate, non un cerchio
+         steso sopra. Un cerchio dipinto ha un bordo, e qualunque bordo si
+         disegni e' peggio di quello che fanno loro diradandosi. */
+      sostaDa:      0.55,   /* dove si pianta, sul binario intero */
+      sostaA:       0.78,   /* dove riparte */
+      sostaQuota:   0.66,   /* a che punto del proprio spettacolo si pianta */
+
+      /* La tendina bianca a tutto schermo resta accesa: e' lei che chiude. */
+      biancoFinale: true
     }
   };
 
@@ -1161,11 +1171,24 @@
       barra.style.pointerEvents = via > 0.85 ? "none" : "";
     }
 
+    /* Il binario e' piu' lungo dello spettacolo, e in mezzo c'e' una pausa.
+       Tre tratti: si sale fino alla quota della sosta, ci si ferma, si
+       finisce. Fuori dalla sosta sono due rette, quindi non si sente nessuna
+       accelerazione: si sente solo che a un certo punto il cielo smette di
+       allargarsi. */
+    function curva(g) {
+      if (!P.coda) return g;
+      var a = P.sostaDa, b = P.sostaA, q = P.sostaQuota;
+      if (g <= a) return a > 0 ? g / a * q : q;
+      if (g >= b) return b < 1 ? q + (g - b) / (1 - b) * (1 - q) : 1;
+      return q;
+    }
+
     function stato() {
       var r = pin.getBoundingClientRect();
       var corsa = pin.offsetHeight - global.innerHeight;
       grezzo = corsa > 0 ? clamp(-r.top / corsa, 0, 1) : (r.top <= 0 ? 1 : 0);
-      progresso = P.coda > 0 ? clamp(grezzo / (1 - P.coda), 0, 1) : grezzo;
+      progresso = clamp(curva(grezzo), 0, 1);
 
       /* La slide sotto sta ferma esattamente finche' questa sezione e'
          incollata: prima ci pensa il suo sticky, dopo non serve piu'. */
@@ -1208,7 +1231,6 @@
       /* L'header si ridipinge leggendo il fondo sotto di se', e qui sotto non
          c'e' niente di opaco da leggere: glielo diciamo noi. */
       var s = progresso < I.soglia;
-      if (P.coda > 0) s = statoScuro;   /* comanda la radura */
       if (s !== statoScuro) {
         statoScuro = s;
         stick.setAttribute("data-hdr", s ? "dark" : "light");

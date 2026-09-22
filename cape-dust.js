@@ -103,9 +103,18 @@
        del suo volume. Stanno nella repo cape-rilievo, pinnate a uno SHA — a
        @main jsDelivr le tiene in cache fino a una settimana e si finisce a
        guardare una versione vecchia senza capire perche'. */
-    lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@fbe6f72f9a7c90bf9846963f25aa746551eed3b7/",
+    lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@6e33bc8e1adfe7d96ba44fa1fb2672dea750a244/",
     lastraSolco: "stampa.png",
     lastraGobba: "stampa-gobba.png",
+    /* Il formato delle due immagini. Serve prima che arrivino: il bianco
+       si misura sulla lastra, e deve potersi formare anche se le immagini
+       tardano o non arrivano affatto. */
+    lastraFormato: 1600 / 1159,
+    /* E quanta parte di loro e' disegno: il resto e' margine, che serve alla
+       gobba per spegnersi prima del bordo. Le misure — della lastra e del
+       bianco attorno — si prendono sul DISEGNO, non sul file. Li stampa
+       stampa.py: se rigeneri le immagini, ricopiali qui. */
+    lastraDisegno: [0.827, 0.761],
 
     cursore:    "#capecur",
     cursoreVar: "--cc",
@@ -113,7 +122,8 @@
     suBianco:   "#141416",
 
     /* Oltre questa soglia di progresso lo schermo e' piu' bianco che nero:
-       cursore scuro, e header avvisato col suo data-hdr. */
+       l'header viene avvisato col suo data-hdr. Il cursore la usa solo
+       finche' non sa dov'e' il mouse: poi guarda cosa ha sotto (stato()). */
     soglia: 0.62,
 
     params: {
@@ -282,7 +292,8 @@
          da / a     dentro quale tratto della sezione il tocco esiste: dopo
                     che la foto si e' sgretolata, prima che vinca il bianco.
                     Sulla fotografia ancora intera sarebbe fuori luogo, e nel
-                    bianco non ci sarebbe niente da svegliare. */
+                    bianco non ci sarebbe niente da svegliare. Dentro il
+                    bianco del centro si spegne da solo, pixel per pixel. */
       toccoQuota:   0.80,
       toccoRitmo:   9.0,
       toccoForza:   13.0,
@@ -291,7 +302,21 @@
       toccoCoda:    0.70,
       toccoSalita:  0.10,
       toccoDa:      0.30,
-      toccoA:       0.78,
+      toccoA:       0.92,
+
+      /* ——— la spinta del mouse ————————————————————————————————————
+         Oltre ad accendere la scia, il puntatore SCOSTA i diamanti: si
+         allontanano da lui come l'acqua dalla mano, e tornano al loro posto
+         mentre la scia si spegne — con lo stesso tempo, toccoCoda, perche'
+         sono la stessa cosa vista in due modi.
+         Non e' uno stato delle particelle, che non ne hanno: e' una mappa
+         di spostamenti in coordinate schermo, come quella del calore, che il
+         vertex shader somma alla posizione. Il volo resta una funzione pura
+         del progresso; la spinta gli passa sopra e se ne va.
+         spinta        di quanto al massimo, in pixel css
+         spintaRaggio  fin dove arriva, in altezze di schermo */
+      spinta:       20,
+      spintaRaggio: 0.16,
 
       /* ——— la salita della luce ————————————————————————————————
          Nell'ultimo tratto tutte le stelle insieme si accendono. Serve
@@ -304,89 +329,130 @@
       guadagnoA:    0.95,
 
       /* ——— il bianco finale ————————————————————————————————————
-         La luce che si accumula porta lo schermo quasi a bianco da sola, ma
-         "quasi" non basta: la sezione dopo e' bianca e un fondo a 250 invece
-         che 255 si vede come una riga. Questo velo chiude il conto.
-         Arriva a pieno prima della fine della corsa: l'ultimo tratto e'
-         bianco fermo, ed e' li' che lo studio-hero entra senza stacco. */
-      veloDa:       0.68,
-      veloA:        0.88,
+         Lo schermo lo riempie il bianco del centro, allargandosi (vedi IL
+         BIANCO). Questo velo a tutto schermo arriva DOPO, quando e' gia'
+         tutto bianco, e serve solo a garantire il 255 esatto: la sezione dopo
+         e' bianca e un fondo a 250 si vede come una riga.
+         Prima arrivava a meta' strada, sopra il cielo ancora nero, ed e' li'
+         che nasceva la fase grigia: un velo mezzo trasparente su nero e'
+         grigio, qualunque cosa ci sia sotto.
+         Sul binario intero, come tutto quello che viene dopo la polvere. */
+      veloDa:       0.93,
+      veloA:        0.96,
 
       /* ——— la coda: l'ultimo tratto del binario non e' di questa sezione ———
          Dopo la polvere viene la lastra incisa, e sta sullo STESSO binario,
          dentro allo stesso pannello incollato. Non e' una sezione a parte:
-         e' la seconda meta' di questa. `coda` dice quanta parte del binario
-         appartiene a quello che viene dopo.
-
-         A zero questo file si comporta esattamente come prima. */
+         e' la seconda meta' di questa. `coda` accende il rallentamento qui
+         sotto; a zero lo spettacolo corre dritto dall'inizio alla fine. */
       coda:         0.36,
 
-      /* ——— la sosta ————————————————————————————————————————————
-         E' il cuore dell'innesto, e non aggiunge nessun effetto: TOGLIE del
-         tempo.
+      /* ——— il rallentamento ————————————————————————————————————
+         Mentre si incide la lastra la polvere non si ferma: RALLENTA. Prima
+         qui c'era una sosta — il progresso piantato per un quarto del binario
+         — e un campo che si pianta e riparte e' un secondo movimento, non lo
+         stesso che continua.
+         Quello che si regola e' la VELOCITA' del progresso lungo il binario,
+         non il progresso: scende piano fino a `lento`, ci resta, risale
+         piano. La curva e' il suo integrale, quindi non ha spigoli: non c'e'
+         un fotogramma in cui si sente la frenata.
+         passo    la velocita' prima del rallentamento. E' quella di sempre
+                  (0.66 / 0.55): l'espansione fino al bianco non cambia.
+                  Dopo, la velocita' la trova la curva da sola, perche' il
+                  progresso arrivi a 1 esattamente in fondo al binario. */
+      passo:        1.2,
+      lentoDa:      0.46,   /* dove comincia a frenare, sul binario intero */
+      lentoA:       0.82,   /* dove ha ripreso del tutto */
+      lentoRampa:   0.08,   /* quanto dura la frenata, e la ripresa */
+      lento:        0.15,   /* la velocita' in mezzo, rispetto a `passo` */
 
-         A due terzi della sua corsa il campo e' nello stato piu' bello che
-         fa — il centro saturo di bianco, i bordi ancora neri — e ci passa
-         sopra in un soffio, perche' per lui e' solo un fotogramma di strada
-         verso il bianco pieno. Qui il progresso si PIANTA li' per un quarto
-         del binario: le particelle restano dove sono e continuano a
-         scintillare, e in quella pausa entra la lastra. Poi riparte, il
-         campo si allarga, e il bianco chiude come ha sempre fatto.
-
-         E' per questo che il bianco al centro NON viene dipinto da nessuna
-         parte: e' la luce di queste particelle addossate, non un cerchio
-         steso sopra. Un cerchio dipinto ha un bordo, e qualunque bordo si
-         disegni e' peggio di quello che fanno loro diradandosi. */
-      sostaDa:      0.55,   /* dove si pianta, sul binario intero */
-      sostaA:       0.78,   /* dove riparte */
-      sostaQuota:   0.66,   /* a che punto del proprio spettacolo si pianta */
-
-      /* La tendina bianca a tutto schermo resta accesa: e' lei che chiude. */
+      /* La tendina bianca a tutto schermo resta accesa: arriva quando lo
+         schermo e' gia' bianco, e garantisce il 255 (vedi veloDa). */
       biancoFinale: true,
 
-      /* ——— IL RADUNO ————————————————————————————————————————————
-         Fin qui ogni pixel, una volta staccato, andava dritto per sempre.
-         Adesso una parte di loro ha una DESTINAZIONE: si radunano al centro
-         dello schermo e si addossano finche' la loro luce sommata non satura
-         in bianco pieno. E' questo — e solo questo — che fa la pagina bianca
-         su cui compare la stampa incisa. Non c'e' nessun cerchio dipinto
-         sopra: un cerchio dipinto ha un bordo, e qualunque bordo si disegni
-         e' peggio di quello che fanno loro diradandosi.
+      /* ——— IL BIANCO ————————————————————————————————————————————
+         Nessun diamante cambia strada. Prima una parte di loro riceveva una
+         destinazione e si radunava al centro: era un secondo movimento
+         sovrapposto al primo, e si vedeva. Adesso quelli che in QUESTO
+         istante stanno dentro un'ellisse al centro dello schermo si gonfiano
+         e si accendono finche' si toccano e si fondono. Il bianco non arriva
+         da fuori: fiorisce sul posto, dal mezzo verso i bordi, perche'
+         l'ellisse parte da un punto e si allarga. (Ellisse per modo di dire:
+         e' una superellisse, vedi FORMA.)
 
-         CHI arriva prima: quelli che vanno piu' vicino al centro. Il bianco
-         quindi non compare, FIORISCE dal mezzo verso fuori.
+         Il bordo non si disegna: ogni pixel ha la sua soglia sorteggiata
+         (sfrangia), quindi verso fuori il bianco si sfalda in diamanti. E
+         l'ellisse non e' un'ellisse: un rumore lento ne deforma il contorno
+         (rumore, onda), perche' un bordo geometrico si legge come un bordo.
 
-         Il raduno va a `grezzo`, cioe' al binario intero, e non al progresso
-         di questa sezione: durante la sosta il volo e' fermo e il raduno
-         deve continuare lo stesso. */
-      posaQuota:    0.55,   /* che frazione di pixel si raduna */
-      posaRaggio:   0.46,   /* quanto e' largo il raduno, in altezze di schermo */
-      posaStretta:  0.85,   /* <1 addensa verso il centro, >1 verso il bordo */
-      posaOvale:    0.88,   /* quanto e' schiacciato */
-      posaDa:       0.50,   /* sul binario intero */
-      posaA:        0.74,
-      posaSfasa:    0.55,   /* quanto separa il primo arrivato dall'ultimo */
-      posaLuce:     0.45,   /* quanto vale un pixel che si e' posato */
+         Sotto i diamanti c'e' una CARTA: un bianco pieno che arriva un
+         attimo dopo e solo dove loro sono gia' fusi, a tappare i buchi fra
+         uno e l'altro. Senza, su un telefono — dove i pixel sono un quarto —
+         il centro resterebbe granuloso. Sta sotto, mai sopra: dove arriva,
+         i diamanti ci sono gia' e il suo bordo non si vede.
+
+         Alla fine lo stesso bianco si allarga fino agli angoli dello schermo.
+         E' quello, e non un velo, a chiudere la sezione.
+
+         biancoX, biancoY  i semiassi, in multipli di mezzo disegno: il
+                           bianco e' sempre abbastanza largo da contenerlo,
+                           su qualunque schermo. */
+      biancoDa:       0.44,   /* sul binario intero: comincia a fiorire */
+      biancoA:        0.58,   /* e' formato */
+      biancoX:        2.05,
+      biancoY:        2.15,
+      biancoForma:    2.6,    /* 2 = ellisse; piu' alto = piu' squadrato */
+      biancoMorbido:  0.22,   /* quanto e' largo il passaggio diamante -> carta */
+      biancoSfrangia: 0.18,   /* quanto e' sorteggiata la soglia di ognuno */
+      biancoGonfia:   2.6,    /* di quanto si allarga un diamante che diventa carta */
+      biancoLuce:     1.15,   /* quanto vale, sommato agli altri: >1 satura */
+      biancoRumore:   1.4,    /* quanto e' fitta la deformazione del contorno */
+      biancoOnda:     0.10,   /* e quanto e' forte */
+      pienoDa:        0.50,   /* la carta sotto: arriva */
+      pienoA:         0.60,   /* c'e' tutta */
+      pienoDentro:    0.72,   /* fin dove e' piena, in unita' dell'ellisse */
+      pienoFuori:     0.95,   /* dove e' sparita */
+      tuttoDa:        0.80,   /* il bianco si allarga fino ai bordi */
+      tuttoA:         0.93,
 
       /* ——— LA LASTRA ————————————————————————————————————————————
-         La stampa goffrata a secco, incisa dentro il bianco che i pixel
-         hanno appena fatto. Compare DAL BASSO IN SU, nello stesso ordine in
-         cui il bianco si riempie, e si dissolve quando il campo riparte e il
-         bianco vince.
+         La stampa goffrata a secco dentro il bianco: solo la scritta e i due
+         surfisti, bianco su bianco. Si legge dalle ombre, e sul bianco pieno
+         la luce puo' solo fare ombra: sopra non c'e' niente da schiarire. E'
+         anche quello che toglie il rettangolo — dipingendo anche il bianco si
+         vedrebbe il riquadro della lastra stampato sulla pagina.
 
-         Sul bianco pieno la luce puo' solo fare OMBRA: sopra il bianco non
-         c'e' niente da schiarire. Non e' una rinuncia — e' anche quello che
-         toglie il rettangolo: dipingendo anche il bianco si vedrebbe il
-         riquadro della lastra stampato sulla pagina. */
-      lastraDa:     0.58,   /* comincia a comparire */
-      lastraA:      0.76,   /* c'e' tutta */
-      lastraFino:   0.84,   /* resta intera */
-      lastraVia:    0.93,   /* sparita */
-      lastraAlta:   0.74,   /* altezza in frazione di schermo */
-      lastraMassa:  2.6,
-      lastraOmbra:  0.62,
-      lastraLucida: 0.34,
-      lastraForza:  6.5
+         SI INCIDE A PRESSIONE. Compare tutta insieme, prima appena accennata
+         e poi sempre piu' profonda: e' il rilievo che cresce, non un
+         disegno che si scopre. Alla fine torna piatta, mentre il bianco si
+         allarga.
+
+         SI LEGGE SEMPRE TUTTA. Una luce radente d'ambiente la prende da un
+         lato e gira piano (lastraGiro): basta a leggerla anche senza mouse,
+         e su un telefono e' l'unica luce che c'e'. Il puntatore ne aggiunge
+         una sua, vicina: li' le ombre si scavano di piu'.
+
+         SI INCLINA verso il puntatore, di pochi gradi e con un po' di
+         ritardo: la luce dice che c'e' un rilievo, l'inclinazione dice che
+         e' una cosa appoggiata li'. Il lato sotto il mouse va indietro,
+         come nella vecchia lastra del surfista. */
+      lastraDa:       0.50,   /* comincia a premere */
+      lastraA:        0.64,   /* pressione piena */
+      lastraFino:     0.80,   /* resta piena */
+      lastraVia:      0.90,   /* torna piatta */
+      lastraAlta:     0.52,   /* altezza del disegno, in frazione di schermo */
+      lastraLarga:    0.84,   /* e al massimo questa frazione di larghezza */
+      lastraMassa:    1.8,
+      lastraOmbra:    0.62,
+      lastraLucida:   0.34,
+      lastraForza:    6.5,
+      lastraAmbiente: 0.55,   /* quanto conta la luce d'ambiente */
+      lastraContorno: 0.25,   /* quanto scuriscono i fianchi, da ogni lato */
+      lastraMouse:    0.55,   /* quanto conta la luce del puntatore */
+      lastraRadente:  0.45,   /* altezza della luce d'ambiente: bassa = ombre lunghe */
+      lastraGiro:     18,     /* secondi per un giro della luce d'ambiente */
+      lastraInclina:  5,      /* gradi */
+      lastraMolla:    0.30    /* secondi perche' l'inclinazione raggiunga il mouse */
     }
   };
 
@@ -418,6 +484,36 @@
     "  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));",
     "  l = clamp((l - gamma.x) / max(0.0001, gamma.y - gamma.x), 0.0, 1.0);",
     "  return ((1.0 - l) * (1.0 - caso) + dado(c, 0) * caso) * corsa;",
+    "}"
+  ].join("\n");
+
+  /* La forma del bianco, scritta una volta e usata da due programmi: i
+     diamanti che diventano carta e la carta che li tappa da sotto devono
+     essere d'accordo al pixel su dove sta il bordo, o fra i due si vede un
+     alone. Restituisce la distanza dal centro in unita' dell'ellisse (1 = sul
+     bordo), deformata da un rumore lento: le coordinate del rumore sono
+     quelle dell'ellisse a riposo, quindi mentre cresce il contorno non
+     ribolle, si allarga.
+     Non e' un'ellisse ma una SUPERELLISSE (uRumore.z e' l'esponente): piu'
+     squadrata, contiene la lastra — che e' un rettangolo — con molto meno
+     bianco attorno. Un'ellisse abbastanza larga da non tagliarne gli angoli
+     riempirebbe quasi tutto lo schermo.
+     Chi la include deve aver dichiarato uBianco, uBiancoBase e uRumore. */
+  var FORMA = [
+    "float rumore(vec2 p){",
+    "  vec2 i = floor(p), f = fract(p);",
+    "  vec2 u = f * f * (3.0 - 2.0 * f);",
+    "  ivec2 c = ivec2(i) + ivec2(512);",
+    "  float a = dado(c, 5), b = dado(c + ivec2(1, 0), 5);",
+    "  float d = dado(c + ivec2(0, 1), 5), e = dado(c + ivec2(1, 1), 5);",
+    "  return mix(mix(a, b, u.x), mix(d, e, u.x), u.y);",
+    "}",
+    "float lontano(vec2 pos, vec2 centro){",
+    "  vec2 k = (pos - centro) / uBiancoBase * uRumore.x;",
+    "  float n = rumore(k) * 0.65 + rumore(k * 2.3 + 17.0) * 0.35;",
+    "  vec2 q = abs((pos - centro) / uBianco.xy);",
+    "  float d = pow(pow(q.x, uRumore.z) + pow(q.y, uRumore.z), 1.0 / uRumore.z);",
+    "  return d * (1.0 + uRumore.y * (n - 0.5) * 2.0);",
     "}"
   ].join("\n");
 
@@ -481,12 +577,15 @@
     "uniform float uQuota, uForza, uSecchezza, uGuadagno;",
     "uniform float uFuoco, uProfondita, uBokeh, uFlare, uIride;",
     "uniform float uRitmo, uRitmoVar, uBagliore;",
-    "uniform float uPosa, uPosaQuota, uPosaRaggio, uPosaStretta, uPosaOvale;",
-    "uniform float uPosaSfasa, uPosaLuce;",
-    "uniform sampler2D uCalore;",
-    "uniform float uTocco, uToccoQuota, uToccoRitmo, uToccoForza, uToccoSecco;",
+    "uniform vec4  uBianco;",   /* semiassi di adesso, morbido, sfrangia */
+    "uniform vec2  uBiancoBase, uPieno;",
+    "uniform vec3  uRumore;",   /* fitto, forte, esponente della superellisse */
+    "uniform float uBiancoPieno, uGonfia, uCartaLuce;",
+    "uniform sampler2D uCalore, uSpinta;",
+    "uniform float uTocco, uToccoQuota, uToccoRitmo, uToccoForza, uToccoSecco, uSpintaPx;",
     "out vec4 vCol;",
     "out vec3 vForma;",   /* x = raggio del disco dentro lo sprite, y = sfuoco, z = lampo */
+    FORMA,
 
     /* Direzione della spinta: un po' via dal centro della foto, un po' a caso.
        La componente in profondita' e' simmetrica, quindi meta' dei pixel
@@ -562,21 +661,27 @@
     "  float sc = uCamera / max(uCamera - p.z, uCamera * 0.14);",
     "  vec2 scr = vc + (p.xy - vc) * sc;",
 
-    /* ——— il raduno ———
-       Una parte dei pixel ha una destinazione dentro un disco al centro
-       dello schermo. Chi va piu' vicino al centro arriva prima, quindi il
-       bianco fiorisce dal mezzo invece di comparire tutto insieme.
-       Si mescola QUI, sulla posizione gia' proiettata: un pixel che si e'
-       posato sta sulla carta, e la carta non ha prospettiva. */
-    "  float posa = 0.0;",
-    "  if (uPosa > 0.0) {",
-    "    float aa = dado(c, 90 + slot) * 6.2831853;",
-    "    float rr = pow(dado(c, 94 + slot), uPosaStretta);",
-    "    vec2  ber = vc + vec2(cos(aa), sin(aa)) * (rr * uPosaRaggio) * vec2(1.0, uPosaOvale);",
-    "    float sel = step(dado(c, 98 + slot), uPosaQuota);",
-    "    float q = clamp((uPosa - rr * uPosaSfasa) / max(1.0 - uPosaSfasa, 0.001), 0.0, 1.0);",
-    "    posa = sel * (1.0 - pow(1.0 - q, 3.0));",
-    "    scr = mix(scr, ber, posa);",
+    /* ——— il bianco ———
+       Nessun pixel cambia strada: chi in questo istante sta dentro il bianco
+       diventa carta — si gonfia, si accende, smette di scintillare — e chi
+       ne esce torna diamante. Si decide QUI, sulla posizione gia' proiettata,
+       perche' il bianco sta sullo schermo e non nello spazio.
+       Chi sta dove la carta di sotto e' gia' piena non si disegna nemmeno:
+       bianco piu' luce e' bianco, e sono i pixel piu' fitti di tutto il
+       campo — il risparmio e' proprio dove costerebbero di piu'. */
+    "  float carta = 0.0;",
+    "  if (uBianco.x > 0.5) {",
+    "    float lo = lontano(scr, vc);",
+    "    if (uBiancoPieno * (1.0 - smoothstep(uPieno.x, uPieno.y, lo)) > 0.996) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec4(0.0); vForma = vec3(0.0); return; }",
+    "    float jit = (dado(c, 90 + slot) - 0.5) * uBianco.w;",
+    "    carta = 1.0 - smoothstep(1.0 - uBianco.z, 1.0, lo + jit);",
+    "  }",
+
+    /* LA SPINTA del puntatore, solo fuori dal bianco: nel bianco il mouse
+       tocca la lastra, non la carta. */
+    "  if (uTocco > 0.0 && uSpintaPx > 0.0 && carta < 1.0) {",
+    "    vec2 sp = (texture(uSpinta, scr / uRes).rg * 255.0 - 127.0) / 127.0;",
+    "    scr += sp * uSpintaPx * uTocco * (1.0 - carta);",
     "  }",
 
     "  vec2 n = (scr / uRes) * 2.0 - 1.0;",
@@ -584,7 +689,7 @@
 
     /* il colore della foto che si perde nel bianco lungo il viaggio */
     "  float bianco = smoothstep(0.0, uSbianca, tau);",
-    "  vec3 cc = mix(mix(col, vec3(1.0), bianco), vec3(1.0), posa);",
+    "  vec3 cc = mix(mix(col, vec3(1.0), bianco), vec3(1.0), carta);",
 
     /* GAMMA DINAMICA. Quasi tutti quasi spenti, pochissimi accesi davvero:
        l'elevamento alla quinta schiaccia la distribuzione in fondo. E' la
@@ -595,7 +700,7 @@
        Entra INSIEME al bianco, cosi' nell'istante del distacco il pixel vale
        esattamente quello che valeva nella fotografia e la cucitura col
        rettangolo resta invisibile. */
-    "  float taglia = mix(mix(1.0, 0.02 + 3.20 * pow(dado(c, 60 + slot), 5.0), bianco), uPosaLuce, posa);",
+    "  float taglia = mix(mix(1.0, 0.02 + 3.20 * pow(dado(c, 60 + slot), 5.0), bianco), uCartaLuce, carta);",
 
     /* IL FUOCO. Un piano a fuoco, e tutto il resto che sfuoca allontanandosi
        da li'. E' la cosa che dice "macro su gioielleria" invece di "sistema
@@ -606,7 +711,7 @@
        viaggia. Chi sfuoca si allarga e, a parita' di luce, si spegne: la
        stessa energia spalmata su piu' area. */
     "  float sfuoco = clamp(abs(p.z - uFuoco) / uProfondita, 0.0, 1.0);",
-    "  sfuoco *= sfuoco * (1.0 - posa);",
+    "  sfuoco *= sfuoco * (1.0 - carta);",
 
     /* Le stelle di prima grandezza si allargano un po'. Non e' un effetto:
        una sorgente molto piu' forte satura un'area piu' larga, e' quello che
@@ -616,8 +721,8 @@
        A distacco appena avvenuto taglia vale 1 e il bagliore e' zero,
        quindi la cucitura con la fotografia resta esatta. */
     "  float astro = smoothstep(1.1, 2.9, taglia);",
-    "  float nucleo  = uPunto * uDpr * clamp(mix(sc, 1.0, posa), 1.0, uCrescita) * (1.0 + uBagliore * astro);",
-    "  float largo   = nucleo * (1.0 + sfuoco * uBokeh);",
+    "  float nucleo  = uPunto * uDpr * clamp(mix(sc, 1.0, carta), 1.0, uCrescita) * (1.0 + uBagliore * astro);",
+    "  float largo   = nucleo * (1.0 + sfuoco * uBokeh) * mix(1.0, uGonfia, carta);",
     "  float attenua = 1.0 / (1.0 + sfuoco * uBokeh * 1.4);",
 
     /* lo scintillio va a orologio, non a scroll: da fermi il cielo resta
@@ -629,7 +734,7 @@
     "  float acceso = step(d20, uQuota);",
     "  float ph = dado(c, 30 + slot) * 6.2831853;",
     "  float rt = uRitmo + uRitmoVar * dado(c, 50 + slot);",
-    "  float lampo = acceso * pow(max(0.0, sin(uTime * rt + ph)), uSecchezza) * (1.0 - posa * 0.9);",
+    "  float lampo = acceso * pow(max(0.0, sin(uTime * rt + ph)), uSecchezza) * (1.0 - carta);",
 
     /* IL TOCCO. Il calore e' una piccola mappa in coordinate schermo che si
        ritimbra dove sta il puntatore e si spegne dietro. Qui dentro le
@@ -647,7 +752,7 @@
     "    if (h > 0.004) {",
     "      float ammesso = 1.0 - smoothstep(uToccoQuota - 0.10, uToccoQuota, d20);",
     "      float veloce = pow(max(0.0, sin(uTime * rt * uToccoRitmo + ph)), uToccoSecco);",
-    "      lampoT = ammesso * h * veloce;",
+    "      lampoT = ammesso * h * veloce * (1.0 - carta);",
     "      lampo = max(lampo, lampoT);",
     "    }",
     "  }",
@@ -675,7 +780,9 @@
        punto non "cresce" quando scocca il lampo, gli escono solo i raggi. */
     "  float lato = max(largo * 1.6, croce * uFlare * uDpr);",
     "  gl_PointSize = clamp(lato, 1.0, 110.0);",
-    "  vForma = vec3(0.5 * largo / max(lato, 1.0), sfuoco, croce);",
+    /* la carta ha il bordo morbido: dischi sfumati che si sovrappongono
+       fanno un bianco liscio, dischi netti fanno una grana */
+    "  vForma = vec3(0.5 * largo / max(lato, 1.0), mix(sfuoco, 0.7, carta), croce);",
 
     /* si spegne chi passa troppo vicino alla camera (diventerebbe una
        macchia) e chi e' andato cosi' lontano da non contare piu' */
@@ -700,7 +807,7 @@
        E non e' un imbroglio: una sorgente abbastanza forte si vede benissimo
        anche sfocata — diventa un disco luminoso invece di un punto, che e'
        poi la cosa piu' bella che possa succedere qui dentro. */
-    "  vCol = vec4(cc * luce * mix(attenua, 1.0, lampoT), mix(apre * vicino * via, 1.0, posa));",
+    "  vCol = vec4(cc * luce * mix(attenua, 1.0, lampoT), mix(apre * vicino * via, 1.0, carta));",
     "}"
   ].join("\n");
 
@@ -757,6 +864,24 @@
     "void main(){ oCol = vec4(uA); }"
   ].join("\n");
 
+  /* ——— la carta sotto il bianco ——————————————————————————————————
+     Tappa i buchi fra i diamanti che si sono fusi. Si disegna PRIMA di loro,
+     con lo stesso quadrato a tutto schermo del velo: il suo bordo sfumato
+     resta sotto quelli che si stanno gonfiando, e non si vede mai da solo. */
+  var FS_PIENO = HEAD + DADO + [
+    "uniform vec2  uRes;",
+    "uniform vec4  uBianco;",
+    "uniform vec2  uBiancoBase, uPieno;",
+    "uniform vec3  uRumore;",
+    "uniform float uBiancoPieno;",
+    "out vec4 oCol;",
+    FORMA,
+    "void main(){",
+    "  vec2 pos = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);",
+    "  oCol = vec4(uBiancoPieno * (1.0 - smoothstep(uPieno.x, uPieno.y, lontano(pos, uRes * 0.5))));",
+    "}"
+  ].join("\n");
+
   /* ——— la lastra incisa ————————————————————————————————————————————
      Un rettangolo al centro dello schermo, e dentro una stampa serigrafica
      goffrata a secco: la carta schiacciata dove batte l'inchiostro.
@@ -773,16 +898,25 @@
      contorno e diventa una cosa scolpita. Il RIFLESSO pero' lo tiene solo il
      solco — su una gobba larga un riflesso largo sembra plastica bagnata,
      sulle incisioni sottili sembra gesso. */
+  /* L'INCLINAZIONE si fa qui, nella geometria, con la prospettiva vera: il
+     rettangolo ruota attorno al suo centro e i quattro angoli escono con la
+     loro w, cosi' la texture si stira come su un oggetto e non come su un
+     trapezio disegnato. La luce invece resta nel piano della lastra: se le
+     normali ruotassero con lei, anche la carta liscia cambierebbe tono e il
+     riquadro della lastra comparirebbe sulla pagina. */
   var VS_LASTRA = HEAD + [
-    "uniform vec4 uRect;",
-    "uniform vec2 uRes;",
+    "uniform vec2  uCentro, uMezza, uInclina, uRes;",
+    "uniform float uCam;",
     "out vec2 vUv;",
     "void main(){",
     "  vec2 q = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));",
     "  vUv = q;",
-    "  vec2 pp = uRect.xy + q * uRect.zw;",
-    "  vec2 n = (pp / uRes) * 2.0 - 1.0;",
-    "  gl_Position = vec4(n.x, -n.y, 0.0, 1.0);",
+    "  vec2 l = (q * 2.0 - 1.0) * uMezza;",
+    "  vec3 p = vec3(l.x * cos(uInclina.x), l.y * cos(uInclina.y),",
+    "                -l.x * sin(uInclina.x) - l.y * sin(uInclina.y));",
+    "  float w = (uCam - p.z) / uCam;",
+    "  vec2 xy = ((uCentro / uRes) * 2.0 - 1.0) * w + p.xy * (2.0 / uRes);",
+    "  gl_Position = vec4(xy.x, -xy.y, 0.0, w);",
     "}"
   ].join("\n");
 
@@ -791,9 +925,11 @@
     "out vec4 oCol;",
     "uniform sampler2D uMappa, uGobba;",
     "uniform vec2  uTexel;",
-    "uniform vec3  uLuceA, uLuceB, uLuceC;",
+    "uniform vec3  uLuceM;",   /* il puntatore: x, y sulla lastra, quanto vale */
+    "uniform vec4  uAmb;",     /* la luce d'ambiente: direzione, quanto vale */
+    "uniform float uContorno;",
     "uniform float uAspetto, uForza, uMassa, uDiffusa, uLucida, uDurezza;",
-    "uniform float uAltezza, uRaggio, uRivela, uSpegni;",
+    "uniform float uAltezza, uRaggio, uPress;",
     "float luce(vec3 n, vec3 np, vec2 pos, vec3 l){",
     "  if (l.z <= 0.0) return 0.0;",
     "  vec3 v = vec3(l.xy - pos, uAltezza);",
@@ -811,17 +947,26 @@
     "  float hd = texture(uMappa, uv + vec2(uTexel.x, 0.0)).r;",
     "  float hg = texture(uMappa, uv + vec2(0.0, uTexel.y)).r;",
     "  float ha = texture(uMappa, uv - vec2(0.0, uTexel.y)).r;",
-    "  vec2 ps = vec2((hd - hs) * uForza, (hg - ha) * uForza);",
-    "  vec2 g  = texture(uGobba, uv).rg * 2.0 - 1.0;",
+    /* la pressione scala le pendenze, non l'ombra: e' il rilievo che si
+       alza, e un rilievo basso fa ombre corte e chiare, non ombre sbiadite */
+    "  vec2 ps = vec2((hd - hs) * uForza, (hg - ha) * uForza) * uPress;",
+    "  vec2 g  = (texture(uGobba, uv).rg * 2.0 - 1.0) * uPress;",
     "  vec2 pos = vec2(uv.x, uv.y * uAspetto);",
     "  vec3 n  = normalize(vec3(ps - g * uMassa, 1.0));",
     "  vec3 np = normalize(vec3(ps, 1.0));",
-    "  float d = luce(n, np, pos, uLuceA) + luce(n, np, pos, uLuceB) + luce(n, np, pos, uLuceC);",
+    /* la luce d'ambiente e' radente e arriva da lontano: uguale su tutta la
+       lastra. Misurata rispetto alla carta liscia (- L.z): dove non c'e'
+       rilievo vale zero, niente riquadro.
+       Da sola pero' fa leggere solo i fianchi girati dall'altra parte: sul
+       bianco il lato illuminato non puo' schiarire, e meta' di ogni figura
+       sparisce. Il CONTORNO e' il cielo coperto che si aggiunge: scurisce
+       ogni fianco in proporzione a quanto e' ripido, da qualunque parte
+       guardi — e' quello che rende la lastra leggibile tutta, mentre la luce
+       che gira le da' la direzione. Anche lui vale zero sul piano. */
+    "  float d = (dot(n, uAmb.xyz) - uAmb.z) * uAmb.w * uDiffusa + (n.z - 1.0) * uContorno",
+    "          + luce(n, np, pos, uLuceM);",
     /* sul bianco pieno la luce puo' solo fare ombra: sopra non c'e' niente */
     "  float a = clamp(-d, 0.0, 1.0);",
-    /* compare dal basso in su, nello stesso ordine in cui il bianco fiorisce */
-    "  a *= smoothstep(1.0 - uRivela - 0.02, 1.0 - uRivela + 0.12, uv.y);",
-    "  a *= uSpegni;",
     "  oCol = vec4(0.0, 0.0, 0.0, a);",
     "}"
   ].join("\n");
@@ -943,8 +1088,27 @@
        fatta con framebuffer da scambiare, e non c'e' niente da gestire. */
     var CAL_X = 64, CAL_Y = 36;
     var calore = null, calByte = null, calTex = null, calMouse = null, calT = 0;
-    var lastra = null, lastraTex = null, gobbaTex = null;
+
+    /* La spinta sta in una mappa sorella, due canali (lo spostamento in x e
+       in y) e il doppio piu' fitta: una scia puo' essere morbida, uno
+       spostamento no — a 64 celle su uno schermo largo ogni cella e' trenta
+       pixel, piu' della spinta intera, e il filtro lineare la spalmerebbe
+       fino a farla sparire. Otto bit bastano: 1/127 di venti pixel. Lo zero
+       e' 127, non 128: 127.5 non esiste in otto bit, e arrotondato lascerebbe
+       tutto il cielo spostato di un'inezia anche senza mouse. */
+    var SP_X = 128, SP_Y = 72;
+    var spinta = null, spByte = null, spTex = null, spViva = false;
+
+    var lastra = null, lastraTex = null, gobbaTex = null, pieno = null;
     var lastraPronta = false, lastraW = 0, lastraH = 0, lastraAng = 0, lastraT = 0;
+    var incX = 0, incY = 0, statoCursore = null;
+
+    /* La curva del binario — il progresso in funzione della posizione — e'
+       l'integrale di una velocita' che frena e riparte. Non ha una formula
+       chiusa comoda, quindi si tabula una volta e si legge interpolando:
+       cinquecento punti su un binario di nove schermate sono un punto ogni
+       due pixel di scroll. */
+    var CURVA_N = 512, tabella = null;
 
     /* ——— avvio ————————————————————————————————————————————————— */
 
@@ -961,6 +1125,7 @@
         prog  = programma(gl, VS_FOTO,  FS_FOTO);
         punti = programma(gl, VS_PUNTI, FS_PUNTI);
         velo  = programma(gl, VS_VELO,  FS_VELO);
+        pieno = programma(gl, VS_VELO,  FS_PIENO);
         lastra = programma(gl, VS_LASTRA, FS_LASTRA);
       } catch (e) { return false; }
       vao = gl.createVertexArray();          /* vuoto: i punti nascono da gl_VertexID */
@@ -1035,6 +1200,8 @@
       if (!pilotaCursore) return;
       calore  = new Float32Array(CAL_X * CAL_Y);
       calByte = new Uint8Array(CAL_X * CAL_Y);
+      spinta  = new Float32Array(SP_X * SP_Y * 2);
+      spByte  = new Uint8Array(SP_X * SP_Y * 2);
       global.addEventListener("mousemove", function (e) {
         calMouse = [e.clientX, e.clientY];
       }, { passive: true });
@@ -1088,6 +1255,53 @@
       gl.bindTexture(gl.TEXTURE_2D, calTex);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, CAL_X, CAL_Y, gl.RED, gl.UNSIGNED_BYTE, calByte);
+
+      /* ——— la spinta ———
+         Si spegne con lo stesso tempo della scia: i diamanti tornano al loro
+         posto mentre la luce se ne va, non prima e non dopo. Sotto il
+         puntatore ogni cella tende allo spostamento "via da lui", tanto piu'
+         forte quanto piu' e' vicina. Pesato anche quello con la distanza: al
+         bordo dell'impronta non si cancella la spinta lasciata da un
+         passaggio di un attimo prima, ci si somma. */
+      if (!spinta || !spTex) return;
+      for (i = 0; i < spinta.length; i++) spinta[i] *= giu;
+      if (calMouse) {
+        var vw2 = global.innerWidth, vh2 = global.innerHeight;
+        var asp2 = vw2 / vh2;
+        var px = calMouse[0] / vw2, py = calMouse[1] / vh2;
+        var Rs = P.spintaRaggio;
+        var a0 = Math.max(0, Math.floor((px - Rs / asp2) * SP_X));
+        var a1 = Math.min(SP_X - 1, Math.ceil((px + Rs / asp2) * SP_X));
+        var b0 = Math.max(0, Math.floor((py - Rs) * SP_Y));
+        var b1 = Math.min(SP_Y - 1, Math.ceil((py + Rs) * SP_Y));
+        for (j = b0; j <= b1; j++) {
+          var sy = (j + 0.5) / SP_Y - py;
+          for (i = a0; i <= a1; i++) {
+            var sx = ((i + 0.5) / SP_X - px) * asp2;
+            var lung = Math.sqrt(sx * sx + sy * sy);
+            var q = lung / Rs;
+            if (q >= 1) continue;
+            var forza = (1 - q) * (1 - q) / Math.max(lung, 1e-4);
+            var peso = su * (1 - q);
+            k = (j * SP_X + i) * 2;
+            spinta[k]     += (sx * forza - spinta[k])     * peso;
+            spinta[k + 1] += (sy * forza - spinta[k + 1]) * peso;
+          }
+        }
+      }
+      /* ferma del tutto, lo shader non la legge nemmeno: il cielo resta
+         identico al pixel a quello che era prima che la spinta esistesse */
+      spViva = false;
+      for (i = 0; i < spinta.length; i++) {
+        if (spinta[i] > 0.004 || spinta[i] < -0.004) spViva = true;
+        var w = spinta[i] * 127 + 127;
+        spByte[i] = w <= 0 ? 0 : (w >= 254 ? 254 : Math.round(w));
+      }
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, spTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, SP_X, SP_Y, gl.RG, gl.UNSIGNED_BYTE, spByte);
+      gl.activeTexture(gl.TEXTURE0);
     }
 
     function misura() {
@@ -1179,6 +1393,18 @@
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+          /* la spinta, per la stessa ragione: 127 vuol dire "fermo" */
+          var neutra = new Uint8Array(SP_X * SP_Y * 2);
+          neutra.fill(127);
+          spTex = gl.createTexture();
+          gl.activeTexture(gl.TEXTURE4);
+          gl.bindTexture(gl.TEXTURE_2D, spTex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, SP_X, SP_Y, 0, gl.RG, gl.UNSIGNED_BYTE, neutra);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
           gl.activeTexture(gl.TEXTURE0);
           apriCalore();
           apriLastra();
@@ -1202,6 +1428,47 @@
     function orologio() {
       var n = (global.performance && performance.now ? performance.now() : Date.now());
       return (n - t0) / 1000;
+    }
+
+    function superellisse(x, y) {
+      var n = P.biancoForma;
+      return Math.pow(Math.pow(Math.abs(x), n) + Math.pow(Math.abs(y), n), 1 / n);
+    }
+
+    /* La lastra a schermo, margine compreso: il disegno e' alto lastraAlta,
+       ma mai piu' largo di lastraLarga — su un telefono in verticale e' la
+       larghezza a comandare. */
+    function misuraLastra() {
+      var f = lastraW && lastraH ? lastraW / lastraH : I.lastraFormato;
+      var fx = I.lastraDisegno[0], fy = I.lastraDisegno[1];
+      var ah = Math.min(P.lastraAlta * res[1] / fy, P.lastraLarga * res[0] / (fx * f));
+      return [ah * f, ah];
+    }
+
+    /* Il bianco in questo istante: i suoi semiassi in pixel del dispositivo,
+       quelli a riposo (per il rumore) e quanto e' piena la carta di sotto.
+       Fiorisce da un punto fino a contenere la lastra, poi alla fine cresce
+       quanto serve perche' anche gli angoli dello schermo siano carta piena:
+       quel "quanto" si misura, perche' dipende dal formato dello schermo. */
+    function statoBianco() {
+      var la = misuraLastra();
+      var rx0 = la[0] * I.lastraDisegno[0] * 0.5 * P.biancoX;
+      var ry0 = la[1] * I.lastraDisegno[1] * 0.5 * P.biancoY;
+      var angolo = superellisse(res[0] * 0.5 / rx0, res[1] * 0.5 / ry0);
+      var dentro = Math.min(P.pienoDentro, 1 - P.biancoMorbido - P.biancoSfrangia * 0.5);
+      var tutto = angolo * (1 + P.biancoOnda) / dentro * 1.05;
+      var s = smoothstep(P.biancoDa, P.biancoA, grezzo) +
+              Math.max(0, tutto - 1) * smoothstep(P.tuttoDa, P.tuttoA, grezzo);
+      return { rx: rx0 * s, ry: ry0 * s, rx0: rx0, ry0: ry0,
+               pieno: smoothstep(P.pienoDa, P.pienoA, grezzo) };
+    }
+
+    function passaBianco(u, b) {
+      gl.uniform4f(u.uBianco, b.rx, b.ry, P.biancoMorbido, P.biancoSfrangia);
+      gl.uniform2f(u.uBiancoBase, b.rx0, b.ry0);
+      gl.uniform3f(u.uRumore, P.biancoRumore, P.biancoOnda, P.biancoForma);
+      gl.uniform2f(u.uPieno, P.pienoDentro, P.pienoFuori);
+      gl.uniform1f(u.uBiancoPieno, b.pieno);
     }
 
     function disegna() {
@@ -1242,7 +1509,18 @@
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
 
-      /* 2. quello che e' in volo. Somma, non copre: e' cosi' che mille
+      /* 2. la carta sotto il bianco. Prima dei diamanti: sta sotto di loro,
+            e dove e' piena loro non si disegnano nemmeno. */
+      var b = statoBianco();
+      if (b.rx > 1 && b.pieno > 0.001) {
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.useProgram(pieno.id);
+        gl.uniform2f(pieno.u.uRes, res[0], res[1]);
+        passaBianco(pieno.u, b);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
+      /* 3. quello che e' in volo. Somma, non copre: e' cosi' che mille
             pixel deboli fanno una luce che alla fine e' bianca. */
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(punti.id);
@@ -1281,25 +1559,28 @@
 
       /* Il tocco vive solo nel cielo: entra quando la foto si e' sgretolata,
          esce prima che il bianco copra tutto. Fuori da quella finestra il
-         fattore e' zero e lo shader salta il blocco per intero. */
+         fattore e' zero e lo shader salta il blocco per intero. La spinta
+         e' dentro la stessa finestra: sono la stessa mano. */
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, spTex);
+      gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(u.uCalore, 1);
+      gl.uniform1i(u.uSpinta, 4);
       gl.uniform1f(u.uToccoQuota, P.toccoQuota);
       gl.uniform1f(u.uToccoRitmo, P.toccoRitmo);
       gl.uniform1f(u.uToccoForza, P.toccoForza);
       gl.uniform1f(u.uToccoSecco, P.toccoSecco);
+      gl.uniform1f(u.uSpintaPx, spViva ? P.spinta * dpr : 0);
       gl.uniform1f(u.uTocco, calore
         ? smoothstep(P.toccoDa, P.toccoDa + 0.06, p) * (1 - smoothstep(P.toccoA - 0.10, P.toccoA, p))
         : 0);
-      /* IL RADUNO va a `grezzo`, il binario intero, e non a `p`: durante la
-         sosta il volo e' fermo e il raduno deve continuare lo stesso. E' la
-         sola cosa qui dentro che non guarda il progresso di questa sezione. */
-      gl.uniform1f(u.uPosa, smoothstep(P.posaDa, P.posaA, grezzo));
-      gl.uniform1f(u.uPosaQuota, P.posaQuota);
-      gl.uniform1f(u.uPosaRaggio, P.posaRaggio * res[1]);
-      gl.uniform1f(u.uPosaStretta, P.posaStretta);
-      gl.uniform1f(u.uPosaOvale, P.posaOvale);
-      gl.uniform1f(u.uPosaSfasa, P.posaSfasa);
-      gl.uniform1f(u.uPosaLuce, P.posaLuce);
+
+      /* IL BIANCO va a `grezzo`, il binario intero, e non a `p`: e' della
+         seconda meta' della sezione, non dello spettacolo della polvere. */
+      if (b.rx > 1) passaBianco(u, b);
+      else gl.uniform4f(u.uBianco, 0, 0, 0, 0);
+      gl.uniform1f(u.uGonfia, P.biancoGonfia);
+      gl.uniform1f(u.uCartaLuce, P.biancoLuce);
 
       gl.uniform1f(u.uGuadagno, 1 + P.guadagno * smoothstep(P.guadagnoDa, P.guadagnoA, p));
       gl.uniform2f(u.uDeriva2,
@@ -1307,20 +1588,43 @@
         (res[1] * 0.5 - (rect[1] + rect[3] * 0.5)) * P.centra);
       gl.drawArrays(gl.POINTS, 0, nPunti);
 
-      /* 3. la lastra incisa, dentro il bianco che i punti hanno appena fatto.
+      /* 4. la lastra incisa, dentro il bianco che i punti hanno appena fatto.
             Va per forza DOPO di loro: e' un'ombra, e un'ombra ha bisogno di
             qualcosa sotto su cui posarsi. */
-      var spegni = 1 - smoothstep(P.lastraFino, P.lastraVia, grezzo);
-      var rivela = smoothstep(P.lastraDa, P.lastraA, grezzo) * 1.14;
-      if (lastraPronta && rivela > 0.001 && spegni > 0.002) {
-        var ah = P.lastraAlta * res[1];
-        var aw = ah * (lastraW / lastraH);
-        var ax = (res[0] - aw) * 0.5, ay = (res[1] - ah) * 0.5;
+      var ora = orologio();
+      var dt = lastraT ? Math.min(0.1, ora - lastraT) : 0.016;
+      lastraT = ora;
+      lastraAng += dt * 2 * Math.PI / P.lastraGiro;
+      var press = smoothstep(P.lastraDa, P.lastraA, grezzo) * (1 - smoothstep(P.lastraFino, P.lastraVia, grezzo));
+      var la = misuraLastra(), aw = la[0], ah = la[1];
+      var ax = (res[0] - aw) * 0.5, ay = (res[1] - ah) * 0.5;
 
+      /* dove sta il puntatore rispetto alla lastra: per la sua luce, in
+         coordinate della lastra, e per l'inclinazione, da -1 a 1 attorno al
+         centro. Si misura sul rettangolo DRITTO: misurato su quello
+         inclinato, la luce inseguirebbe se stessa. */
+      var mouse = 0, mx = 0.5, my = ah / aw * 0.5, miraX = 0, miraY = 0;
+      if (calMouse && press > 0.001) {
+        mx = (calMouse[0] * dpr - ax) / aw;
+        my = (calMouse[1] * dpr - ay) / aw;
+        var asp = ah / aw;
+        if (mx > -0.35 && mx < 1.35 && my > -0.35 * asp && my < 1.35 * asp) mouse = 1;
+        miraX = clamp((calMouse[0] * dpr - res[0] * 0.5) / (aw * 0.5), -1, 1);
+        miraY = clamp((calMouse[1] * dpr - res[1] * 0.5) / (ah * 0.5), -1, 1);
+      }
+      var molla = 1 - Math.exp(-dt / P.lastraMolla);
+      incX += (miraX - incX) * molla;
+      incY += (miraY - incY) * molla;
+
+      if (lastraPronta && press > 0.001) {
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         gl.useProgram(lastra.id);
         var v = lastra.u;
-        gl.uniform4f(v.uRect, ax, ay, aw, ah);
+        var gradi = P.lastraInclina * Math.PI / 180;
+        gl.uniform2f(v.uCentro, res[0] * 0.5, res[1] * 0.5);
+        gl.uniform2f(v.uMezza, aw * 0.5, ah * 0.5);
+        gl.uniform2f(v.uInclina, incX * gradi, incY * gradi);
+        gl.uniform1f(v.uCam, 1500 * dpr);
         gl.uniform2f(v.uRes, res[0], res[1]);
         gl.uniform1i(v.uMappa, 2);
         gl.uniform1i(v.uGobba, 3);
@@ -1337,33 +1641,19 @@
         gl.uniform1f(v.uDurezza, 28);
         gl.uniform1f(v.uAltezza, 0.30);
         gl.uniform1f(v.uRaggio, 0.85);
-        gl.uniform1f(v.uRivela, rivela);
-        gl.uniform1f(v.uSpegni, spegni);
+        gl.uniform1f(v.uPress, press);
 
-        /* Due luci che girano piano piu' il puntatore. Le prime due servono
-           perche' senza, chi arriva e non muove il mouse vede un rettangolo
-           vuoto: una goffratura esiste solo dove la luce la taglia di lato. */
-        var ora = orologio();
-        lastraAng += (ora - lastraT) * 2 * Math.PI / 18;
-        lastraT = ora;
-        var asp = ah / aw, rr = 0.44;
-        var mouse = 0, mx = 0.5, my = asp * 0.5;
-        if (calMouse) {
-          mx = (calMouse[0] * dpr - ax) / aw;
-          my = (calMouse[1] * dpr - ay) / aw;
-          if (mx > -0.35 && mx < 1.35 && my > -0.35 * asp && my < 1.35 * asp) mouse = 1;
-        }
-        var gi = 0.26 * (1 - mouse);
-        gl.uniform3f(v.uLuceA, 0.5 + Math.cos(lastraAng + Math.PI) * rr,
-                               asp / 2 + Math.sin(lastraAng + Math.PI) * asp * rr, gi);
-        gl.uniform3f(v.uLuceB, 0.5 + Math.cos(lastraAng) * rr,
-                               asp / 2 + Math.sin(lastraAng) * asp * rr, gi);
-        gl.uniform3f(v.uLuceC, mx, my, mouse);
+        /* la luce d'ambiente: radente, gira piano. Il puntatore aggiunge la
+           sua, vicina, dove si trova. */
+        var alta = P.lastraRadente, bassa = Math.sqrt(1 - alta * alta);
+        gl.uniform4f(v.uAmb, Math.cos(lastraAng) * bassa, Math.sin(lastraAng) * bassa, alta, P.lastraAmbiente);
+        gl.uniform1f(v.uContorno, P.lastraContorno);
+        gl.uniform3f(v.uLuceM, mx, my, mouse * P.lastraMouse);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
 
-      /* 4. il velo che chiude sul bianco pieno */
-      var a = P.biancoFinale === false ? 0 : smoothstep(P.veloDa, P.veloA, p);
+      /* 5. il velo che chiude sul bianco pieno, quando e' gia' tutto bianco */
+      var a = P.biancoFinale === false ? 0 : smoothstep(P.veloDa, P.veloA, grezzo);
       if (a > 0.001) {
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         gl.useProgram(velo.id);
@@ -1415,17 +1705,47 @@
       barra.style.pointerEvents = via > 0.85 ? "none" : "";
     }
 
-    /* Il binario e' piu' lungo dello spettacolo, e in mezzo c'e' una pausa.
-       Tre tratti: si sale fino alla quota della sosta, ci si ferma, si
-       finisce. Fuori dalla sosta sono due rette, quindi non si sente nessuna
-       accelerazione: si sente solo che a un certo punto il cielo smette di
-       allargarsi. */
+    /* Il binario e' piu' lungo dello spettacolo, e in mezzo lo spettacolo
+       RALLENTA: e' li' che si incide la lastra. Fino al rallentamento la
+       velocita' e' `passo`, quella di sempre; poi scende a `lento`, ci resta,
+       e risale a quella che serve per arrivare a 1 in fondo al binario. La
+       curva e' l'integrale di questa velocita', quindi non ha spigoli: non si
+       sente la frenata, si sente solo il cielo che si allarga piu' piano. */
+    function tabula() {
+      var n = CURVA_N, da = P.lentoDa, a = P.lentoA, r = Math.max(P.lentoRampa, 0.001);
+      var A = new Float64Array(n + 1), B = new Float64Array(n + 1), i;
+      for (i = 0; i <= n; i++) {
+        var g = i / n, giu = smoothstep(da, da + r, g), su = smoothstep(a - r, a, g);
+        A[i] = (1 - (1 - P.lento) * giu) * (1 - su);   /* in unita' di passo */
+        B[i] = su;                                       /* in unita' della velocita' finale */
+      }
+      var iA = 0, iB = 0;
+      for (i = 1; i <= n; i++) { iA += (A[i] + A[i - 1]) / (2 * n); iB += (B[i] + B[i - 1]) / (2 * n); }
+      var fine = iB > 0 ? Math.max(0.05, (1 - P.passo * iA) / iB) : 0;
+      tabella = new Float32Array(n + 1);
+      var somma = 0;
+      for (i = 1; i <= n; i++) {
+        somma += (P.passo * (A[i] + A[i - 1]) + fine * (B[i] + B[i - 1])) / (2 * n);
+        tabella[i] = somma;
+      }
+      for (i = 1; i <= n; i++) tabella[i] /= somma;
+    }
+
     function curva(g) {
       if (!P.coda) return g;
-      var a = P.sostaDa, b = P.sostaA, q = P.sostaQuota;
-      if (g <= a) return a > 0 ? g / a * q : q;
-      if (g >= b) return b < 1 ? q + (g - b) / (1 - b) * (1 - q) : 1;
-      return q;
+      if (!tabella) tabula();
+      var x = clamp(g, 0, 1) * CURVA_N, i = Math.min(CURVA_N - 1, Math.floor(x));
+      return tabella[i] + (tabella[i + 1] - tabella[i]) * (x - i);
+    }
+
+    /* C'e' carta piena sotto il puntatore? Il rumore del contorno qui non
+       c'e': basta sapere da che parte sta, e il bordo e' largo. */
+    function biancoSotto() {
+      var b = statoBianco();
+      if (b.rx <= 1 || b.pieno < 0.5) return false;
+      var qx = (calMouse[0] * dpr - res[0] * 0.5) / b.rx;
+      var qy = (calMouse[1] * dpr - res[1] * 0.5) / b.ry;
+      return superellisse(qx, qy) < (P.pienoDentro + P.pienoFuori) * 0.5;
     }
 
     function stato() {
@@ -1478,8 +1798,18 @@
       if (s !== statoScuro) {
         statoScuro = s;
         stick.setAttribute("data-hdr", s ? "dark" : "light");
-        if (cursore && pilotaCursore) {
-          cursore.style.setProperty(I.cursoreVar, s ? I.suScuro : I.suBianco);
+      }
+
+      /* Il cursore invece guarda cosa ha sotto di SE': con il bianco al
+         centro e il cielo attorno, sulla stessa schermata ci sono tutti e
+         due, e una soglia sola lo lascerebbe bianco sul bianco o nero sul
+         nero. Senza simulazione, o prima che il mouse si muova, vale la
+         soglia di sempre. */
+      if (cursore && pilotaCursore) {
+        var chiaro = calMouse && pronto ? biancoSotto() : !s;
+        if (chiaro !== statoCursore) {
+          statoCursore = chiaro;
+          cursore.style.setProperty(I.cursoreVar, chiaro ? I.suBianco : I.suScuro);
         }
       }
     }
@@ -1491,6 +1821,7 @@
       muoviBarra(0);
       if (rigTrack && statoVelo !== -1) { statoVelo = -1; rigTrack.style.removeProperty(I.velo); }
       if (cursore) cursore.style.removeProperty(I.cursoreVar);
+      statoCursore = null;
     }
 
     function giro() {

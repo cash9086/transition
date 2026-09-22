@@ -103,13 +103,15 @@
        del suo volume. Stanno nella repo cape-rilievo, pinnate a uno SHA — a
        @main jsDelivr le tiene in cache fino a una settimana e si finisce a
        guardare una versione vecchia senza capire perche'. */
-    lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@6e33bc8e1adfe7d96ba44fa1fb2672dea750a244/",
-    lastraSolco: "stampa.png",
-    lastraGobba: "stampa-gobba.png",
+    lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@641d7e8fb84f29b4ee0c13cb39600ad1acad698c/",
+    /* la versione con la grana della stampa vera: e' quella che fa leggere
+       lo scavo come il manifesto, e non come un disegno pulito */
+    lastraSolco: "stampa-grana.png",
+    lastraGobba: "stampa-grana-gobba.png",
     /* Il formato delle due immagini. Serve prima che arrivino: il bianco
        si misura sulla lastra, e deve potersi formare anche se le immagini
        tardano o non arrivano affatto. */
-    lastraFormato: 1600 / 1159,
+    lastraFormato: 1600 / 1158,
     /* E quanta parte di loro e' disegno: il resto e' margine, che serve alla
        gobba per spegnersi prima del bordo. Le misure — della lastra e del
        bianco attorno — si prendono sul DISEGNO, non sul file. Li stampa
@@ -329,8 +331,8 @@
       guadagnoA:    0.95,
 
       /* ——— il bianco finale ————————————————————————————————————
-         Lo schermo lo riempie il bianco del centro, allargandosi (vedi IL
-         BIANCO). Questo velo a tutto schermo arriva DOPO, quando e' gia'
+         Lo schermo lo riempie la luce del centro, crescendo finche' satura
+         anche gli angoli (vedi LA LUCE). Questo velo arriva DOPO, quando e' gia'
          tutto bianco, e serve solo a garantire il 255 esatto: la sezione dopo
          e' bianca e un fondo a 250 si vede come una riga.
          Prima arrivava a meta' strada, sopra il cielo ancora nero, ed e' li'
@@ -370,62 +372,64 @@
          schermo e' gia' bianco, e garantisce il 255 (vedi veloDa). */
       biancoFinale: true,
 
-      /* ——— IL BIANCO ————————————————————————————————————————————
-         Nessun diamante cambia strada. Prima una parte di loro riceveva una
-         destinazione e si radunava al centro: era un secondo movimento
-         sovrapposto al primo, e si vedeva. Adesso quelli che in QUESTO
-         istante stanno dentro un'ellisse al centro dello schermo si gonfiano
-         e si accendono finche' si toccano e si fondono. Il bianco non arriva
-         da fuori: fiorisce sul posto, dal mezzo verso i bordi, perche'
-         l'ellisse parte da un punto e si allarga. (Ellisse per modo di dire:
-         e' una superellisse, vedi FORMA.)
+      /* ——— LA LUCE ————————————————————————————————————————————
+         Il bianco del centro non e' una forma: e' LUCE. Prima era una
+         superellisse che si allargava, coi diamanti che dentro diventavano
+         carta e fuori no — e per quanto sfrangiato, un confine che avanza si
+         legge come una sezione che si apre, non come un bagliore.
 
-         Il bordo non si disegna: ogni pixel ha la sua soglia sorteggiata
-         (sfrangia), quindi verso fuori il bianco si sfalda in diamanti. E
-         l'ellisse non e' un'ellisse: un rumore lento ne deforma il contorno
-         (rumore, onda), perche' un bordo geometrico si legge come un bordo.
+         Adesso al centro dello schermo c'e' un campo di luce senza bordo:
+         cala con la distanza come cala un bagliore (exp(-d^forma)), e nel
+         tempo non si allarga — CRESCE DI INTENSITA'. Ogni diamante prende la
+         luce che gli arriva: si accende, si gonfia, smette di scintillare,
+         in proporzione, senza soglie. Dove la luce e' tanta i diamanti
+         bruciano e sotto di loro compare la carta bianca; dove e' poca sono
+         solo piu' luminosi del solito. Nessun diamante cambia strada.
 
-         Sotto i diamanti c'e' una CARTA: un bianco pieno che arriva un
-         attimo dopo e solo dove loro sono gia' fusi, a tappare i buchi fra
-         uno e l'altro. Senza, su un telefono — dove i pixel sono un quarto —
-         il centro resterebbe granuloso. Sta sotto, mai sopra: dove arriva,
-         i diamanti ci sono gia' e il suo bordo non si vede.
+         Il bianco pieno quindi non ha un fronte: e' il punto in cui la luce
+         satura, e satura prima al centro e poi via via fuori, mentre tutto
+         attorno i diamanti si accendono gia'.
 
-         Alla fine lo stesso bianco si allarga fino agli angoli dello schermo.
-         E' quello, e non un velo, a chiudere la sezione.
+         Alla fine la stessa luce cresce finche' satura anche gli angoli
+         dello schermo: e' quello, e non un velo, a chiudere la sezione.
 
-         biancoX, biancoY  i semiassi, in multipli di mezzo disegno: il
-                           bianco e' sempre abbastanza largo da contenerlo,
-                           su qualunque schermo. */
-      biancoDa:       0.44,   /* sul binario intero: comincia a fiorire */
-      biancoA:        0.58,   /* e' formato */
-      biancoX:        2.05,
-      biancoY:        2.15,
-      biancoForma:    2.6,    /* 2 = ellisse; piu' alto = piu' squadrato */
-      biancoMorbido:  0.22,   /* quanto e' largo il passaggio diamante -> carta */
-      biancoSfrangia: 0.18,   /* quanto e' sorteggiata la soglia di ognuno */
-      biancoGonfia:   2.6,    /* di quanto si allarga un diamante che diventa carta */
-      biancoLuce:     1.15,   /* quanto vale, sommato agli altri: >1 satura */
-      biancoRumore:   1.4,    /* quanto e' fitta la deformazione del contorno */
-      biancoOnda:     0.10,   /* e quanto e' forte */
-      pienoDa:        0.50,   /* la carta sotto: arriva */
-      pienoA:         0.60,   /* c'e' tutta */
-      pienoDentro:    0.72,   /* fin dove e' piena, in unita' dell'ellisse */
-      pienoFuori:     0.95,   /* dove e' sparita */
-      tuttoDa:        0.80,   /* il bianco si allarga fino ai bordi */
+         luceX, luceY  quanto e' larga, in multipli di mezzo disegno della
+                       lastra: il bianco pieno la contiene sempre, su
+                       qualunque schermo, perche' l'intensita' massima si
+                       calcola da qui. */
+      luceDa:         0.42,   /* sul binario intero: si accende */
+      luceA:          0.62,   /* e' al massimo */
+      luceCurva:      2.2,    /* >1 = parte piano, un chiarore, poi cresce */
+      luceX:          0.5,
+      luceY:          0.5,
+      luceForma:      1.0,    /* 1 = esponenziale, 2 = gaussiana */
+      luceCarta:      0.8,    /* quanto in fretta un diamante diventa luce */
+      luceGuadagno:   0.35,   /* quanto si accende, per unita' di luce */
+      luceGonfia:     2.6,    /* di quanto si allarga un diamante tutto luce */
+      luceColmo:      1.15,   /* quanto vale un diamante tutto luce: >1 satura */
+      luceAlone:      0.3,    /* un velo di luce attorno alla carta, 0 = niente */
+      pienoDa:        1.5,    /* a quanta luce la carta sotto comincia */
+      pienoA:         8.0,    /* e a quanta e' piena */
+      tuttoDa:        0.80,   /* la luce cresce fino a saturare lo schermo */
       tuttoA:         0.93,
 
       /* ——— LA LASTRA ————————————————————————————————————————————
-         La stampa goffrata a secco dentro il bianco: solo la scritta e i due
-         surfisti, bianco su bianco. Si legge dalle ombre, e sul bianco pieno
-         la luce puo' solo fare ombra: sopra non c'e' niente da schiarire. E'
-         anche quello che toglie il rettangolo — dipingendo anche il bianco si
-         vedrebbe il riquadro della lastra stampato sulla pagina.
+         La scritta e i due surfisti SCAVATI nella carta, bianco su bianco. Si
+         leggono dalle ombre, e sul bianco pieno la luce puo' solo fare ombra:
+         sopra non c'e' niente da schiarire. E' anche quello che toglie il
+         rettangolo — dipingendo anche il bianco si vedrebbe il riquadro della
+         lastra stampato sulla pagina.
+
+         SCAVATA, NON SOLO CONTORNATA. Con la sola luce sulle pareti si legge
+         il bordo delle sagome e il loro interno resta bianco come la carta:
+         da lontano e' un disegno a linee, uno scarabocchio. Qui la parete
+         dalla parte della luce getta un'ombra sul fondo (lastraPortata), e il
+         fondo, che prende meno cielo, e' un filo piu' scuro (lastraFondo): la
+         sagoma si legge piena, come nel manifesto vero.
 
          SI INCIDE A PRESSIONE. Compare tutta insieme, prima appena accennata
-         e poi sempre piu' profonda: e' il rilievo che cresce, non un
-         disegno che si scopre. Alla fine torna piatta, mentre il bianco si
-         allarga.
+         e poi sempre piu' profonda: e' lo scavo che affonda, non un disegno
+         che si scopre. Alla fine torna piatta, mentre la luce satura tutto.
 
          SI LEGGE SEMPRE TUTTA. Una luce radente d'ambiente la prende da un
          lato e gira piano (lastraGiro): basta a leggerla anche senza mouse,
@@ -436,8 +440,8 @@
          ritardo: la luce dice che c'e' un rilievo, l'inclinazione dice che
          e' una cosa appoggiata li'. Il lato sotto il mouse va indietro,
          come nella vecchia lastra del surfista. */
-      lastraDa:       0.50,   /* comincia a premere */
-      lastraA:        0.64,   /* pressione piena */
+      lastraDa:       0.52,   /* comincia a scavare */
+      lastraA:        0.66,   /* pressione piena */
       lastraFino:     0.80,   /* resta piena */
       lastraVia:      0.90,   /* torna piatta */
       lastraAlta:     0.52,   /* altezza del disegno, in frazione di schermo */
@@ -447,8 +451,12 @@
       lastraLucida:   0.34,
       lastraForza:    6.5,
       lastraAmbiente: 0.55,   /* quanto conta la luce d'ambiente */
-      lastraContorno: 0.25,   /* quanto scuriscono i fianchi, da ogni lato */
+      lastraContorno: 0.2,    /* quanto scuriscono i fianchi, da ogni lato */
       lastraMouse:    0.55,   /* quanto conta la luce del puntatore */
+      lastraSegno:    -1,     /* -1 = scavata nella carta, +1 = in rilievo */
+      lastraProfondita: 0.016, /* quanto e' profonda, in larghezze di lastra */
+      lastraPortata:  0.6,    /* quanto sono scure le ombre portate */
+      lastraFondo:    0.12,   /* quanto e' piu' scuro il fondo dello scavo */
       lastraRadente:  0.45,   /* altezza della luce d'ambiente: bassa = ombre lunghe */
       lastraGiro:     18,     /* secondi per un giro della luce d'ambiente */
       lastraInclina:  5,      /* gradi */
@@ -487,33 +495,14 @@
     "}"
   ].join("\n");
 
-  /* La forma del bianco, scritta una volta e usata da due programmi: i
-     diamanti che diventano carta e la carta che li tappa da sotto devono
-     essere d'accordo al pixel su dove sta il bordo, o fra i due si vede un
-     alone. Restituisce la distanza dal centro in unita' dell'ellisse (1 = sul
-     bordo), deformata da un rumore lento: le coordinate del rumore sono
-     quelle dell'ellisse a riposo, quindi mentre cresce il contorno non
-     ribolle, si allarga.
-     Non e' un'ellisse ma una SUPERELLISSE (uRumore.z e' l'esponente): piu'
-     squadrata, contiene la lastra — che e' un rettangolo — con molto meno
-     bianco attorno. Un'ellisse abbastanza larga da non tagliarne gli angoli
-     riempirebbe quasi tutto lo schermo.
-     Chi la include deve aver dichiarato uBianco, uBiancoBase e uRumore. */
-  var FORMA = [
-    "float rumore(vec2 p){",
-    "  vec2 i = floor(p), f = fract(p);",
-    "  vec2 u = f * f * (3.0 - 2.0 * f);",
-    "  ivec2 c = ivec2(i) + ivec2(512);",
-    "  float a = dado(c, 5), b = dado(c + ivec2(1, 0), 5);",
-    "  float d = dado(c + ivec2(0, 1), 5), e = dado(c + ivec2(1, 1), 5);",
-    "  return mix(mix(a, b, u.x), mix(d, e, u.x), u.y);",
-    "}",
-    "float lontano(vec2 pos, vec2 centro){",
-    "  vec2 k = (pos - centro) / uBiancoBase * uRumore.x;",
-    "  float n = rumore(k) * 0.65 + rumore(k * 2.3 + 17.0) * 0.35;",
-    "  vec2 q = abs((pos - centro) / uBianco.xy);",
-    "  float d = pow(pow(q.x, uRumore.z) + pow(q.y, uRumore.z), 1.0 / uRumore.z);",
-    "  return d * (1.0 + uRumore.y * (n - 0.5) * 2.0);",
+  /* Il campo di luce, scritto una volta e usato da due programmi: i
+     diamanti che si accendono e la carta che li tappa da sotto devono
+     leggere la stessa luce, o fra i due si vede un alone. Chi lo include
+     deve aver dichiarato uLume (semiassi, intensita', esponente). */
+  var LUME = [
+    "float lume(vec2 pos, vec2 centro){",
+    "  vec2 q = (pos - centro) / uLume.xy;",
+    "  return uLume.z * exp(-pow(dot(q, q), uLume.w * 0.5));",
     "}"
   ].join("\n");
 
@@ -577,15 +566,14 @@
     "uniform float uQuota, uForza, uSecchezza, uGuadagno;",
     "uniform float uFuoco, uProfondita, uBokeh, uFlare, uIride;",
     "uniform float uRitmo, uRitmoVar, uBagliore;",
-    "uniform vec4  uBianco;",   /* semiassi di adesso, morbido, sfrangia */
-    "uniform vec2  uBiancoBase, uPieno;",
-    "uniform vec3  uRumore;",   /* fitto, forte, esponente della superellisse */
-    "uniform float uBiancoPieno, uGonfia, uCartaLuce;",
+    "uniform vec4  uLume;",     /* semiassi, intensita', esponente */
+    "uniform vec2  uPieno;",    /* la luce a cui la carta comincia, e e' piena */
+    "uniform float uLumeCarta, uLumeGuadagno, uGonfia, uCartaLuce;",
     "uniform sampler2D uCalore, uSpinta;",
     "uniform float uTocco, uToccoQuota, uToccoRitmo, uToccoForza, uToccoSecco, uSpintaPx;",
     "out vec4 vCol;",
     "out vec3 vForma;",   /* x = raggio del disco dentro lo sprite, y = sfuoco, z = lampo */
-    FORMA,
+    LUME,
 
     /* Direzione della spinta: un po' via dal centro della foto, un po' a caso.
        La componente in profondita' e' simmetrica, quindi meta' dei pixel
@@ -661,20 +649,19 @@
     "  float sc = uCamera / max(uCamera - p.z, uCamera * 0.14);",
     "  vec2 scr = vc + (p.xy - vc) * sc;",
 
-    /* ——— il bianco ———
-       Nessun pixel cambia strada: chi in questo istante sta dentro il bianco
-       diventa carta — si gonfia, si accende, smette di scintillare — e chi
-       ne esce torna diamante. Si decide QUI, sulla posizione gia' proiettata,
-       perche' il bianco sta sullo schermo e non nello spazio.
+    /* ——— la luce ———
+       Nessun pixel cambia strada: prende la luce che gli arriva li' dove
+       sta. `carta` dice quanto e' diventato luce — da 0 a 1, senza soglie —
+       e `lumeQui` quanta ne riceve, che serve anche oltre l'1: e' quella
+       che accende i diamanti lontani, dove la carta non c'e'.
        Chi sta dove la carta di sotto e' gia' piena non si disegna nemmeno:
        bianco piu' luce e' bianco, e sono i pixel piu' fitti di tutto il
        campo — il risparmio e' proprio dove costerebbero di piu'. */
-    "  float carta = 0.0;",
-    "  if (uBianco.x > 0.5) {",
-    "    float lo = lontano(scr, vc);",
-    "    if (uBiancoPieno * (1.0 - smoothstep(uPieno.x, uPieno.y, lo)) > 0.996) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec4(0.0); vForma = vec3(0.0); return; }",
-    "    float jit = (dado(c, 90 + slot) - 0.5) * uBianco.w;",
-    "    carta = 1.0 - smoothstep(1.0 - uBianco.z, 1.0, lo + jit);",
+    "  float carta = 0.0, lumeQui = 0.0;",
+    "  if (uLume.z > 0.001) {",
+    "    lumeQui = lume(scr, vc);",
+    "    if (smoothstep(uPieno.x, uPieno.y, lumeQui) > 0.996) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vCol = vec4(0.0); vForma = vec3(0.0); return; }",
+    "    carta = 1.0 - exp(-lumeQui * uLumeCarta);",
     "  }",
 
     /* LA SPINTA del puntatore, solo fuori dal bianco: nel bianco il mouse
@@ -762,7 +749,7 @@
        distinzione e' quasi tutto — punte su tutto quanto sembrerebbe un
        filtro, punte solo sui nitidi sembra un obiettivo. */
     "  float croce = lampo * (1.0 - sfuoco);",
-    "  float luce  = taglia * (1.0 + uForza * lampo + uToccoForza * lampoT) * uGuadagno;",
+    "  float luce  = taglia * (1.0 + uForza * lampo + uToccoForza * lampoT) * uGuadagno * (1.0 + lumeQui * uLumeGuadagno);",
 
     /* IL FUOCO DEL DIAMANTE. Il cristallo separa la luce: il lampo non e'
        bianco, tira al freddo o all'oro secondo l'angolo. E' esattamente cio'
@@ -780,9 +767,9 @@
        punto non "cresce" quando scocca il lampo, gli escono solo i raggi. */
     "  float lato = max(largo * 1.6, croce * uFlare * uDpr);",
     "  gl_PointSize = clamp(lato, 1.0, 110.0);",
-    /* la carta ha il bordo morbido: dischi sfumati che si sovrappongono
-       fanno un bianco liscio, dischi netti fanno una grana */
-    "  vForma = vec3(0.5 * largo / max(lato, 1.0), mix(sfuoco, 0.7, carta), croce);",
+    /* un diamante che diventa luce ha il bordo morbido: dischi sfumati che
+       si sovrappongono fanno un bagliore, dischi netti fanno una grana */
+    "  vForma = vec3(0.5 * largo / max(lato, 1.0), mix(sfuoco, 0.8, carta), croce);",
 
     /* si spegne chi passa troppo vicino alla camera (diventerebbe una
        macchia) e chi e' andato cosi' lontano da non contare piu' */
@@ -864,21 +851,24 @@
     "void main(){ oCol = vec4(uA); }"
   ].join("\n");
 
-  /* ——— la carta sotto il bianco ——————————————————————————————————
-     Tappa i buchi fra i diamanti che si sono fusi. Si disegna PRIMA di loro,
-     con lo stesso quadrato a tutto schermo del velo: il suo bordo sfumato
-     resta sotto quelli che si stanno gonfiando, e non si vede mai da solo. */
-  var FS_PIENO = HEAD + DADO + [
+  /* ——— la carta sotto la luce ——————————————————————————————————
+     Tappa i buchi fra i diamanti dove la luce e' gia' tanta. Si disegna
+     PRIMA di loro, con lo stesso quadrato a tutto schermo del velo: comincia
+     dove i diamanti sopra sono gia' accesi e gonfi, quindi il suo passaggio
+     resta sotto di loro. `uAlone` le aggiunge, se serve, un velo di luce che
+     scende piano fuori dal pieno. */
+  var FS_PIENO = HEAD + [
     "uniform vec2  uRes;",
-    "uniform vec4  uBianco;",
-    "uniform vec2  uBiancoBase, uPieno;",
-    "uniform vec3  uRumore;",
-    "uniform float uBiancoPieno;",
+    "uniform vec4  uLume;",
+    "uniform vec2  uPieno;",
+    "uniform float uAlone;",
     "out vec4 oCol;",
-    FORMA,
+    LUME,
     "void main(){",
     "  vec2 pos = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);",
-    "  oCol = vec4(uBiancoPieno * (1.0 - smoothstep(uPieno.x, uPieno.y, lontano(pos, uRes * 0.5))));",
+    "  float g = lume(pos, uRes * 0.5);",
+    "  float a = max(smoothstep(uPieno.x, uPieno.y, g), uAlone * (1.0 - exp(-g * 0.35)));",
+    "  oCol = vec4(a);",
     "}"
   ].join("\n");
 
@@ -930,6 +920,32 @@
     "uniform float uContorno;",
     "uniform float uAspetto, uForza, uMassa, uDiffusa, uLucida, uDurezza;",
     "uniform float uAltezza, uRaggio, uPress;",
+    "uniform float uSegno, uProf, uPortata, uFondo;",
+    /* la quota della superficie, in larghezze di lastra: 0 sulla carta,
+       uProf sotto (scavo, uSegno = -1) o sopra (rilievo, +1) dentro le
+       sagome */
+    "float quota(vec2 uv){ return uSegno * uProf * uPress * (1.0 - texture(uMappa, uv).r); }",
+    /* L'OMBRA PORTATA. Senza, la luce disegna solo il contorno delle sagome
+       e il loro interno resta bianco come la carta: da lontano si legge un
+       disegno a linee, uno scarabocchio. Con l'ombra la parete dello scavo
+       dalla parte della luce getta buio sul fondo, e la sagoma si legge
+       piena, profonda. Si cammina dal punto verso la luce: se il terreno
+       sale sopra il raggio, il punto e' in ombra. Sulla carta liscia intorno
+       a uno scavo il raggio non incontra mai niente: niente riquadro. */
+    /* i passi partono sfalsati di pixel in pixel: a passi uguali per tutti
+       il bordo dell'ombra viene a gradini, e i gradini si leggono come righe
+       dentro le lettere */
+    "float ombra(vec2 uv, vec2 dir, float salita, float fino){",
+    "  float z0 = quota(uv), o = 0.0;",
+    "  float sf = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);",
+    "  vec2 passo = vec2(dir.x, dir.y / uAspetto) * (fino / 14.0);",
+    "  for (int i = 0; i < 14; i++) {",
+    "    float k = float(i) + sf;",
+    "    float t = fino * k / 14.0;",
+    "    o = max(o, (quota(uv + passo * k) - z0 - t * salita) / (uProf * 0.3 + 1e-5));",
+    "  }",
+    "  return clamp(o, 0.0, 1.0);",
+    "}",
     "float luce(vec3 n, vec3 np, vec2 pos, vec3 l){",
     "  if (l.z <= 0.0) return 0.0;",
     "  vec3 v = vec3(l.xy - pos, uAltezza);",
@@ -949,8 +965,8 @@
     "  float ha = texture(uMappa, uv - vec2(0.0, uTexel.y)).r;",
     /* la pressione scala le pendenze, non l'ombra: e' il rilievo che si
        alza, e un rilievo basso fa ombre corte e chiare, non ombre sbiadite */
-    "  vec2 ps = vec2((hd - hs) * uForza, (hg - ha) * uForza) * uPress;",
-    "  vec2 g  = (texture(uGobba, uv).rg * 2.0 - 1.0) * uPress;",
+    "  vec2 ps = vec2((hd - hs) * uForza, (hg - ha) * uForza) * uPress * uSegno;",
+    "  vec2 g  = (texture(uGobba, uv).rg * 2.0 - 1.0) * uPress * uSegno;",
     "  vec2 pos = vec2(uv.x, uv.y * uAspetto);",
     "  vec3 n  = normalize(vec3(ps - g * uMassa, 1.0));",
     "  vec3 np = normalize(vec3(ps, 1.0));",
@@ -965,6 +981,22 @@
        che gira le da' la direzione. Anche lui vale zero sul piano. */
     "  float d = (dot(n, uAmb.xyz) - uAmb.z) * uAmb.w * uDiffusa + (n.z - 1.0) * uContorno",
     "          + luce(n, np, pos, uLuceM);",
+    /* le due ombre portate: quella della luce d'ambiente, e quella del
+       puntatore, che cade dalla parte opposta a lui e si allunga quanto
+       piu' il punto e' lontano — e' la luce radente che scava */
+    "  float lxy = max(length(uAmb.xy), 1e-3);",
+    "  float salA = uAmb.z / lxy;",
+    "  d -= ombra(uv, uAmb.xy / lxy, salA, uProf * uPress / salA) * uAmb.w * uPortata;",
+    "  if (uLuceM.z > 0.0) {",
+    "    vec2 v = uLuceM.xy - pos;",
+    "    float dist = max(length(v), 1e-3);",
+    "    float salM = uAltezza / dist;",
+    "    float t = clamp(1.0 - dist / uRaggio, 0.0, 1.0);",
+    "    d -= ombra(uv, v / dist, salM, min(dist, uProf * uPress / salM)) * uPortata * uLuceM.z * t * t * (3.0 - 2.0 * t);",
+    "  }",
+    /* il fondo dello scavo prende meno cielo della carta: un filo piu'
+       scuro, ed e' quello che fa leggere la sagoma come una massa */
+    "  d -= (1.0 - texture(uMappa, uv).r) * uPress * uFondo * max(-uSegno, 0.0);",
     /* sul bianco pieno la luce puo' solo fare ombra: sopra non c'e' niente */
     "  float a = clamp(-d, 0.0, 1.0);",
     "  oCol = vec4(0.0, 0.0, 0.0, a);",
@@ -1100,7 +1132,10 @@
     var spinta = null, spByte = null, spTex = null, spViva = false;
 
     var lastra = null, lastraTex = null, gobbaTex = null, pieno = null;
-    var lastraPronta = false, lastraW = 0, lastraH = 0, lastraAng = 0, lastraT = 0;
+    /* la luce d'ambiente parte da in alto a sinistra: e' da li' che l'occhio
+       si aspetta la luce, e un rilievo illuminato da sotto si legge al
+       contrario — lo scavo sembrerebbe un rilievo */
+    var lastraPronta = false, lastraW = 0, lastraH = 0, lastraAng = Math.PI * 1.25, lastraT = 0;
     var incX = 0, incY = 0, statoCursore = null;
 
     /* La curva del binario — il progresso in funzione della posizione — e'
@@ -1430,11 +1465,6 @@
       return (n - t0) / 1000;
     }
 
-    function superellisse(x, y) {
-      var n = P.biancoForma;
-      return Math.pow(Math.pow(Math.abs(x), n) + Math.pow(Math.abs(y), n), 1 / n);
-    }
-
     /* La lastra a schermo, margine compreso: il disegno e' alto lastraAlta,
        ma mai piu' largo di lastraLarga — su un telefono in verticale e' la
        larghezza a comandare. */
@@ -1445,30 +1475,30 @@
       return [ah * f, ah];
     }
 
-    /* Il bianco in questo istante: i suoi semiassi in pixel del dispositivo,
-       quelli a riposo (per il rumore) e quanto e' piena la carta di sotto.
-       Fiorisce da un punto fino a contenere la lastra, poi alla fine cresce
-       quanto serve perche' anche gli angoli dello schermo siano carta piena:
-       quel "quanto" si misura, perche' dipende dal formato dello schermo. */
-    function statoBianco() {
+    /* La luce in questo istante: i semiassi in pixel del dispositivo e
+       l'intensita' al centro. I semiassi non cambiano: cambia l'intensita'.
+       Quella massima si calcola perche' la carta sia piena fin sugli angoli
+       del disegno, e alla fine fin sugli angoli dello schermo: dipende dal
+       formato dello schermo, e quindi si misura. Fra le due si passa in
+       scala logaritmica, perche' e' cosi' che cresce il raggio di un
+       bagliore: in fretta all'inizio, poi sempre piu' piano. */
+    function statoLuce() {
       var la = misuraLastra();
-      var rx0 = la[0] * I.lastraDisegno[0] * 0.5 * P.biancoX;
-      var ry0 = la[1] * I.lastraDisegno[1] * 0.5 * P.biancoY;
-      var angolo = superellisse(res[0] * 0.5 / rx0, res[1] * 0.5 / ry0);
-      var dentro = Math.min(P.pienoDentro, 1 - P.biancoMorbido - P.biancoSfrangia * 0.5);
-      var tutto = angolo * (1 + P.biancoOnda) / dentro * 1.05;
-      var s = smoothstep(P.biancoDa, P.biancoA, grezzo) +
-              Math.max(0, tutto - 1) * smoothstep(P.tuttoDa, P.tuttoA, grezzo);
-      return { rx: rx0 * s, ry: ry0 * s, rx0: rx0, ry0: ry0,
-               pieno: smoothstep(P.pienoDa, P.pienoA, grezzo) };
+      var dx = la[0] * I.lastraDisegno[0] * 0.5, dy = la[1] * I.lastraDisegno[1] * 0.5;
+      var rx = dx * P.luceX, ry = dy * P.luceY, f = P.luceForma;
+      var dLastra = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+      var dSchermo = Math.pow(res[0] * 0.5 / rx, 2) + Math.pow(res[1] * 0.5 / ry, 2);
+      var aLastra  = P.pienoA * Math.exp(Math.pow(dLastra, f * 0.5)) * 1.3;
+      var aSchermo = P.pienoA * Math.exp(Math.pow(dSchermo, f * 0.5)) * 1.3;
+      var su = Math.pow(smoothstep(P.luceDa, P.luceA, grezzo), P.luceCurva);
+      var fine = smoothstep(P.tuttoDa, P.tuttoA, grezzo);
+      var a = su * Math.exp(Math.log(aLastra) + (Math.log(aSchermo) - Math.log(aLastra)) * fine);
+      return { rx: rx, ry: ry, a: a };
     }
 
-    function passaBianco(u, b) {
-      gl.uniform4f(u.uBianco, b.rx, b.ry, P.biancoMorbido, P.biancoSfrangia);
-      gl.uniform2f(u.uBiancoBase, b.rx0, b.ry0);
-      gl.uniform3f(u.uRumore, P.biancoRumore, P.biancoOnda, P.biancoForma);
-      gl.uniform2f(u.uPieno, P.pienoDentro, P.pienoFuori);
-      gl.uniform1f(u.uBiancoPieno, b.pieno);
+    function passaLuce(u, b) {
+      gl.uniform4f(u.uLume, b.rx, b.ry, b.a, P.luceForma);
+      gl.uniform2f(u.uPieno, P.pienoDa, P.pienoA);
     }
 
     function disegna() {
@@ -1509,14 +1539,15 @@
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
 
-      /* 2. la carta sotto il bianco. Prima dei diamanti: sta sotto di loro,
+      /* 2. la carta sotto la luce. Prima dei diamanti: sta sotto di loro,
             e dove e' piena loro non si disegnano nemmeno. */
-      var b = statoBianco();
-      if (b.rx > 1 && b.pieno > 0.001) {
+      var b = statoLuce();
+      if (b.a > 0.05) {
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         gl.useProgram(pieno.id);
         gl.uniform2f(pieno.u.uRes, res[0], res[1]);
-        passaBianco(pieno.u, b);
+        gl.uniform1f(pieno.u.uAlone, P.luceAlone);
+        passaLuce(pieno.u, b);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
 
@@ -1575,12 +1606,14 @@
         ? smoothstep(P.toccoDa, P.toccoDa + 0.06, p) * (1 - smoothstep(P.toccoA - 0.10, P.toccoA, p))
         : 0);
 
-      /* IL BIANCO va a `grezzo`, il binario intero, e non a `p`: e' della
+      /* LA LUCE va a `grezzo`, il binario intero, e non a `p`: e' della
          seconda meta' della sezione, non dello spettacolo della polvere. */
-      if (b.rx > 1) passaBianco(u, b);
-      else gl.uniform4f(u.uBianco, 0, 0, 0, 0);
-      gl.uniform1f(u.uGonfia, P.biancoGonfia);
-      gl.uniform1f(u.uCartaLuce, P.biancoLuce);
+      if (b.a > 0.001) passaLuce(u, b);
+      else gl.uniform4f(u.uLume, 1, 1, 0, 2);
+      gl.uniform1f(u.uLumeCarta, P.luceCarta);
+      gl.uniform1f(u.uLumeGuadagno, P.luceGuadagno);
+      gl.uniform1f(u.uGonfia, P.luceGonfia);
+      gl.uniform1f(u.uCartaLuce, P.luceColmo);
 
       gl.uniform1f(u.uGuadagno, 1 + P.guadagno * smoothstep(P.guadagnoDa, P.guadagnoA, p));
       gl.uniform2f(u.uDeriva2,
@@ -1642,6 +1675,10 @@
         gl.uniform1f(v.uAltezza, 0.30);
         gl.uniform1f(v.uRaggio, 0.85);
         gl.uniform1f(v.uPress, press);
+        gl.uniform1f(v.uSegno, P.lastraSegno);
+        gl.uniform1f(v.uProf, P.lastraProfondita);
+        gl.uniform1f(v.uPortata, P.lastraPortata);
+        gl.uniform1f(v.uFondo, P.lastraFondo);
 
         /* la luce d'ambiente: radente, gira piano. Il puntatore aggiunge la
            sua, vicina, dove si trova. */
@@ -1738,14 +1775,15 @@
       return tabella[i] + (tabella[i + 1] - tabella[i]) * (x - i);
     }
 
-    /* C'e' carta piena sotto il puntatore? Il rumore del contorno qui non
-       c'e': basta sapere da che parte sta, e il bordo e' largo. */
+    /* C'e' carta piena sotto il puntatore? La stessa luce dello shader,
+       letta in un punto solo. */
     function biancoSotto() {
-      var b = statoBianco();
-      if (b.rx <= 1 || b.pieno < 0.5) return false;
+      var b = statoLuce();
+      if (b.a <= 0.001) return false;
       var qx = (calMouse[0] * dpr - res[0] * 0.5) / b.rx;
       var qy = (calMouse[1] * dpr - res[1] * 0.5) / b.ry;
-      return superellisse(qx, qy) < (P.pienoDentro + P.pienoFuori) * 0.5;
+      var g = b.a * Math.exp(-Math.pow(qx * qx + qy * qy, P.luceForma * 0.5));
+      return g > (P.pienoDa + P.pienoA) * 0.5;
     }
 
     function stato() {

@@ -104,14 +104,14 @@
        @main jsDelivr le tiene in cache fino a una settimana e si finisce a
        guardare una versione vecchia senza capire perche'. */
     lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@641d7e8fb84f29b4ee0c13cb39600ad1acad698c/",
-    /* la versione con la grana della stampa vera: e' quella che fa leggere
-       lo scavo come il manifesto, e non come un disegno pulito */
-    lastraSolco: "stampa-grana.png",
-    lastraGobba: "stampa-grana-gobba.png",
+    /* la versione pulita: le sagome piene, senza la grana del manifesto
+       (c'e' anche quella, stampa-grana*.png, se un domani la si rivuole) */
+    lastraSolco: "stampa.png",
+    lastraGobba: "stampa-gobba.png",
     /* Il formato delle due immagini. Serve prima che arrivino: il bianco
        si misura sulla lastra, e deve potersi formare anche se le immagini
        tardano o non arrivano affatto. */
-    lastraFormato: 1600 / 1158,
+    lastraFormato: 1600 / 1159,
     /* E quanta parte di loro e' disegno: il resto e' margine, che serve alla
        gobba per spegnersi prima del bordo. Le misure — della lastra e del
        bianco attorno — si prendono sul DISEGNO, non sul file. Li stampa

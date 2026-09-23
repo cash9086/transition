@@ -103,15 +103,16 @@
        del suo volume. Stanno nella repo cape-rilievo, pinnate a uno SHA — a
        @main jsDelivr le tiene in cache fino a una settimana e si finisce a
        guardare una versione vecchia senza capire perche'. */
-    lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@641d7e8fb84f29b4ee0c13cb39600ad1acad698c/",
-    /* la versione pulita: le sagome piene, senza la grana del manifesto
-       (c'e' anche quella, stampa-grana*.png, se un domani la si rivuole) */
-    lastraSolco: "stampa.png",
-    lastraGobba: "stampa-gobba.png",
+    lastraBase: "https://cdn.jsdelivr.net/gh/cash9086/cape-rilievo@f65c89a984191160d7f6486283fae0b596ec900d/",
+    /* le sagome del manifesto TRACCIATE in curve, piu' il mare inciso
+       leggero (traccia.py in cape-rilievo): bordi netti e angoli vivi,
+       senza il tremolio del JPG ingrandito */
+    lastraSolco: "lastra.png",
+    lastraGobba: "lastra-gobba.png",
     /* Il formato delle due immagini. Serve prima che arrivino: il bianco
        si misura sulla lastra, e deve potersi formare anche se le immagini
        tardano o non arrivano affatto. */
-    lastraFormato: 1600 / 1159,
+    lastraFormato: 2400 / 1737,
     /* E quanta parte di loro e' disegno: il resto e' margine, che serve alla
        gobba per spegnersi prima del bordo. Le misure — della lastra e del
        bianco attorno — si prendono sul DISEGNO, non sul file. Li stampa
@@ -932,16 +933,16 @@
        piena, profonda. Si cammina dal punto verso la luce: se il terreno
        sale sopra il raggio, il punto e' in ombra. Sulla carta liscia intorno
        a uno scavo il raggio non incontra mai niente: niente riquadro. */
-    /* i passi partono sfalsati di pixel in pixel: a passi uguali per tutti
-       il bordo dell'ombra viene a gradini, e i gradini si leggono come righe
-       dentro le lettere */
+    /* ventotto passi, uguali per tutti i pixel. Con meno passi il bordo
+       dell'ombra viene a gradini e i gradini si leggono come righe dentro le
+       lettere; sfalsarli pixel per pixel toglie le righe ma sporca il bordo
+       di una grana che sembra un difetto di risoluzione. */
     "float ombra(vec2 uv, vec2 dir, float salita, float fino){",
     "  float z0 = quota(uv), o = 0.0;",
-    "  float sf = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);",
-    "  vec2 passo = vec2(dir.x, dir.y / uAspetto) * (fino / 14.0);",
-    "  for (int i = 0; i < 14; i++) {",
-    "    float k = float(i) + sf;",
-    "    float t = fino * k / 14.0;",
+    "  vec2 passo = vec2(dir.x, dir.y / uAspetto) * (fino / 28.0);",
+    "  for (int i = 1; i <= 28; i++) {",
+    "    float k = float(i);",
+    "    float t = fino * k / 28.0;",
     "    o = max(o, (quota(uv + passo * k) - z0 - t * salita) / (uProf * 0.3 + 1e-5));",
     "  }",
     "  return clamp(o, 0.0, 1.0);",
@@ -1136,7 +1137,7 @@
        si aspetta la luce, e un rilievo illuminato da sotto si legge al
        contrario — lo scavo sembrerebbe un rilievo */
     var lastraPronta = false, lastraW = 0, lastraH = 0, lastraAng = Math.PI * 1.25, lastraT = 0;
-    var incX = 0, incY = 0, statoCursore = null;
+    var incX = 0, incY = 0, statoCursore = null, statoCattura = false;
 
     /* La curva del binario — il progresso in funzione della posizione — e'
        l'integrale di una velocita' che frena e riparte. Non ha una formula
@@ -1209,7 +1210,12 @@
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
           gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          /* Con le mipmap. La mappa e' piu' grande della lastra a schermo, e
+             rimpicciolita senza mipmap la scheda la campiona saltando i
+             pixel di mezzo: lungo i bordi delle lettere quel salto e' un
+             tremolio che sembra un difetto di risoluzione. */
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -1800,6 +1806,18 @@
         rig.classList.toggle(I.fermo, statoFermo);
       }
 
+      /* Mentre la sezione e' incollata la tela si prende il puntatore. Sotto
+         c'e' ancora la slide, spenta ma li', e le sue immagini con la classe
+         .cursor-view accenderebbero la scritta VIEW in mezzo alla lastra:
+         sembra un guasto. Con la tela sopra, sotto il mouse non c'e' piu'
+         niente da guardare. La rotella e il dito scorrono lo stesso: la tela
+         non scorre, e l'evento passa alla pagina. */
+      var cattura = progresso > 0.0005 && grezzo < 1;
+      if (cattura !== statoCattura) {
+        statoCattura = cattura;
+        canvas.style.pointerEvents = cattura ? "auto" : "";
+      }
+
       /* La fotografia vera si spegne appena la ridisegniamo noi, e torna
          quando si risale sopra la sezione. Una classe, mai uno stile inline:
          il reveal() del rig orizzontale cancella l'inline. */
@@ -1872,6 +1890,7 @@
       if (rigTrack && statoVelo !== -1) { statoVelo = -1; rigTrack.style.removeProperty(I.velo); }
       if (cursore) cursore.style.removeProperty(I.cursoreVar);
       statoCursore = null;
+      if (statoCattura) { statoCattura = false; canvas.style.pointerEvents = ""; }
     }
 
     function giro() {

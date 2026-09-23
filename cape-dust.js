@@ -119,6 +119,12 @@
        stampa.py: se rigeneri le immagini, ricopiali qui. */
     lastraDisegno: [0.827, 0.761],
 
+    /* La scritta VIEW di cape-view.js. Mentre la sezione e' incollata non
+       deve comparire: sotto c'e' ancora la slide con le sue foto .cursor-view,
+       spenta ma li'. */
+    view:       "#capeview",
+    senzaView:  "cape-dust-senza-view",
+
     cursore:    "#capecur",
     cursoreVar: "--cc",
     suScuro:    "#ffffff",
@@ -432,10 +438,13 @@
          e poi sempre piu' profonda: e' lo scavo che affonda, non un disegno
          che si scopre. Alla fine torna piatta, mentre la luce satura tutto.
 
-         SI LEGGE SEMPRE TUTTA. Una luce radente d'ambiente la prende da un
-         lato e gira piano (lastraGiro): basta a leggerla anche senza mouse,
-         e su un telefono e' l'unica luce che c'e'. Il puntatore ne aggiunge
-         una sua, vicina: li' le ombre si scavano di piu'.
+         SI LEGGE SEMPRE TUTTA, senza bisogno di luci che si muovono da sole:
+         la leggono il fondo un filo piu' scuro e il contorno. Le ombre le fa
+         solo il puntatore, dove sta. Prima c'era anche una luce d'ambiente
+         che girava da sola: ombre che si spostavano dentro le lettere senza
+         che nessuno facesse niente, e stonavano. Resta solo dove il mouse
+         non c'e' (telefono), FERMA, da in alto a sinistra: li' e' l'unica
+         cosa che dice che le sagome sono scavate.
 
          SI INCLINA verso il puntatore, di pochi gradi e con un po' di
          ritardo: la luce dice che c'e' un rilievo, l'inclinazione dice che
@@ -451,7 +460,7 @@
       lastraOmbra:    0.62,
       lastraLucida:   0.34,
       lastraForza:    6.5,
-      lastraAmbiente: 0.55,   /* quanto conta la luce d'ambiente */
+      lastraAmbiente: 0.55,   /* la luce ferma, solo dove non c'e' un mouse */
       lastraContorno: 0.2,    /* quanto scuriscono i fianchi, da ogni lato */
       lastraMouse:    0.55,   /* quanto conta la luce del puntatore */
       lastraSegno:    -1,     /* -1 = scavata nella carta, +1 = in rilievo */
@@ -459,7 +468,6 @@
       lastraPortata:  0.6,    /* quanto sono scure le ombre portate */
       lastraFondo:    0.12,   /* quanto e' piu' scuro il fondo dello scavo */
       lastraRadente:  0.45,   /* altezza della luce d'ambiente: bassa = ombre lunghe */
-      lastraGiro:     18,     /* secondi per un giro della luce d'ambiente */
       lastraInclina:  5,      /* gradi */
       lastraMolla:    0.30    /* secondi perche' l'inclinazione raggiunga il mouse */
     }
@@ -1093,6 +1101,12 @@
     var pilotaCursore = false;
     try { pilotaCursore = global.matchMedia("(min-width:992px) and (hover:hover)").matches; } catch (e) {}
 
+    /* la regola che spegne VIEW: una riga, e sta qui per non doverla
+       chiedere al custom code della pagina */
+    var regolaView = document.createElement("style");
+    regolaView.textContent = "html." + I.senzaView + " " + I.view + "{visibility:hidden !important}";
+    document.head.appendChild(regolaView);
+
     var canvas = document.createElement("canvas");
     canvas.className = "cape-dust-sky";
     canvas.setAttribute("aria-hidden", "true");
@@ -1133,9 +1147,9 @@
     var spinta = null, spByte = null, spTex = null, spViva = false;
 
     var lastra = null, lastraTex = null, gobbaTex = null, pieno = null;
-    /* la luce d'ambiente parte da in alto a sinistra: e' da li' che l'occhio
-       si aspetta la luce, e un rilievo illuminato da sotto si legge al
-       contrario — lo scavo sembrerebbe un rilievo */
+    /* la luce d'ambiente (solo senza mouse) sta in alto a sinistra: e' da
+       li' che l'occhio si aspetta la luce, e uno scavo illuminato da sotto
+       si legge al contrario, come un rilievo */
     var lastraPronta = false, lastraW = 0, lastraH = 0, lastraAng = Math.PI * 1.25, lastraT = 0;
     var incX = 0, incY = 0, statoCursore = null, statoCattura = false;
 
@@ -1633,7 +1647,6 @@
       var ora = orologio();
       var dt = lastraT ? Math.min(0.1, ora - lastraT) : 0.016;
       lastraT = ora;
-      lastraAng += dt * 2 * Math.PI / P.lastraGiro;
       var press = smoothstep(P.lastraDa, P.lastraA, grezzo) * (1 - smoothstep(P.lastraFino, P.lastraVia, grezzo));
       var la = misuraLastra(), aw = la[0], ah = la[1];
       var ax = (res[0] - aw) * 0.5, ay = (res[1] - ah) * 0.5;
@@ -1686,10 +1699,11 @@
         gl.uniform1f(v.uPortata, P.lastraPortata);
         gl.uniform1f(v.uFondo, P.lastraFondo);
 
-        /* la luce d'ambiente: radente, gira piano. Il puntatore aggiunge la
-           sua, vicina, dove si trova. */
+        /* la luce d'ambiente: ferma, e solo dove non c'e' un mouse. Dove c'e',
+           le ombre le fa lui e basta. */
         var alta = P.lastraRadente, bassa = Math.sqrt(1 - alta * alta);
-        gl.uniform4f(v.uAmb, Math.cos(lastraAng) * bassa, Math.sin(lastraAng) * bassa, alta, P.lastraAmbiente);
+        gl.uniform4f(v.uAmb, Math.cos(lastraAng) * bassa, Math.sin(lastraAng) * bassa, alta,
+                     pilotaCursore ? 0 : P.lastraAmbiente);
         gl.uniform1f(v.uContorno, P.lastraContorno);
         gl.uniform3f(v.uLuceM, mx, my, mouse * P.lastraMouse);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -1816,6 +1830,16 @@
       if (cattura !== statoCattura) {
         statoCattura = cattura;
         canvas.style.pointerEvents = cattura ? "auto" : "";
+        /* E comunque VIEW qui non si vede: una classe sulla pagina la tiene
+           nascosta per tutta la sezione, qualunque cosa ci sia sotto il
+           mouse — non tutto quello che c'e' in una pagina si riesce a
+           prevedere da qui. Entrando si finge anche un passaggio del mouse
+           sulla tela, cosi' cape-view chiude la scritta che aveva aperta
+           sulla foto e all'uscita non la ritira fuori. */
+        document.documentElement.classList.toggle(I.senzaView, cattura);
+        if (cattura) {
+          try { canvas.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); } catch (e) {}
+        }
       }
 
       /* La fotografia vera si spegne appena la ridisegniamo noi, e torna
@@ -1890,7 +1914,11 @@
       if (rigTrack && statoVelo !== -1) { statoVelo = -1; rigTrack.style.removeProperty(I.velo); }
       if (cursore) cursore.style.removeProperty(I.cursoreVar);
       statoCursore = null;
-      if (statoCattura) { statoCattura = false; canvas.style.pointerEvents = ""; }
+      if (statoCattura) {
+        statoCattura = false;
+        canvas.style.pointerEvents = "";
+        document.documentElement.classList.remove(I.senzaView);
+      }
     }
 
     function giro() {
@@ -1955,6 +1983,7 @@
         muoviBarra(0);
         global.removeEventListener("resize", suResize);
         if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+        if (regolaView.parentNode) regolaView.parentNode.removeChild(regolaView);
       }
     };
   }
@@ -1982,6 +2011,7 @@
           ["data-hdr", I.stick, "dice alla barra se sotto c'e' il nero o la luce"],
           ["transform", I.barra, "la barra si ritira in su, a scroll, insieme alle scritte della slide"],
           [I.cursoreVar, I.cursore, "il colore del cursore sopra la simulazione"],
+          [I.senzaView, "html", "nasconde la scritta VIEW di cape-view.js finche' la sezione e' incollata"],
           ["window.capeDust", "", "progresso della sezione, per chi volesse leggerlo"]
         ],
         leggo: [["tendina-righe", I.rigWrap,
